@@ -5,3 +5,9 @@ dist/
 *.log
 .DS_Store
 .env
+# packed plugin artifacts (`pnpm pack`; attach to a GitHub Release instead)
+*.tgz
+# local regression suite: kept on disk, deliberately not published
+tests/
+# developer notes: the tracked README.md is the user-facing guide
+devExplan.md

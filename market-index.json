@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "title": {
+    "en": "Mojie for DeepSeek Harness",
+    "zh": "Mojie 模型插件（DSH）"
+  },
+  "description": {
+    "en": "Mojie (mojieaigc.com) models as a DSH provider route, plus native image generation.",
+    "zh": "把 Mojie（mojieaigc.com）的模型接入 DSH，并提供原生图片生成与编辑。"
+  },
+  "metadata": {
+    "categories": {
+      "model": {
+        "title": {
+          "en": "Models & Providers",
+          "zh": "模型接入"
+        }
+      }
+    },
+    "labels": {},
+    "sortKeys": {}
+  },
+  "plugins": [
+    {
+      "name": "@mojieai/dsh-mojie-model-provider",
+      "title": {
+        "en": "Mojie Model Provider",
+        "zh": "Mojie 模型插件"
+      },
+      "description": {
+        "en": "GPT/Claude/Gemini/Qwen/DeepSeek/Doubao/Kimi/Grok/GLM models through one Mojie key, with /image and native image tools.",
+        "zh": "用一个 Mojie Key 接入 GPT/Claude/Gemini/Qwen/DeepSeek/豆包/Kimi/Grok/GLM，并自带 /image 与原生画图工具。"
+      },
+      "author": "MoJIeAIGC",
+      "icon": "docs/assets/mojie-logo.png",
+      "homepage": "https://github.com/MoJIeAIGC/dsh-mojie-model-provider",
+      "repository": {
+        "url": "https://github.com/MoJIeAIGC/dsh-mojie-model-provider"
+      },
+      "metadata": {
+        "category": "model",
+        "keywords": [
+          "dsh-plugin",
+          "mojie",
+          "model-provider",
+          "image-generation"
+        ],
+        "labels": [],
+        "sortKeys": {}
+      },
+      "versions": [
+        {
+          "version": "0.0.0",
+          "publishTimestamp": 1793097632,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.1-rc.2 <0.3.0-0"
+          }
+        }
+      ]
+    }
+  ]
+}

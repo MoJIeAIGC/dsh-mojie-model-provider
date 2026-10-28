@@ -1,0 +1,16 @@
+# Bundle layer installed by `dsh plugin add`.
+#
+# This inserts the Mojie provider row under the settings namespace `mojie`.
+# The API key is a credential reference: keep MOJIE_API_KEY in the launching
+# environment, or store it under that reference through the Models page card.
+# A profile's own cordis.patch.yml can override this row by id.
+- insert:
+    - id: mojie
+      name: '@mojieai/dsh-mojie-model-provider'
+      config:
+        apiKeyEnv: MOJIE_API_KEY
+        baseURL: 'https://mojieaigc.com'
+        # Empty means: use /v1/models discovery plus the built-in catalog.
+        # Add explicit entries here to pin models; include reasoningEfforts
+        # only for models that actually expose selectable efforts.
+        models: []

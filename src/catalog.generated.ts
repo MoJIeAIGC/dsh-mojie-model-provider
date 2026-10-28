@@ -1,0 +1,148 @@
+/**
+ * Mojie model catalog snapshot — GENERATED FILE, DO NOT EDIT BY HAND.
+ *
+ * Source: `GET https://mojieaigc.com/v1/models`
+ * Fetched: 2026-10-26T09:46:12.169Z
+ * Models: 65
+ *
+ * Refresh with `pnpm sync:catalog` (scripts/sync-catalog.mjs). This snapshot keeps the
+ * first request of a session correct before live discovery answers; the live listing
+ * still overrides it wherever it discloses more.
+ */
+
+import type { MojieCatalogModel } from './catalog.js'
+
+/** Built-in catalog rows in `/v1/models` order. */
+export const BUILTIN_CATALOG_MODELS: readonly MojieCatalogModel[] = [
+  { id: 'GLM-5.1', name: 'GLM-5.1', inputModalities: ['text'] },
+  { id: 'GLM-5', name: 'GLM-5', inputModalities: ['text'] },
+  { id: 'GLM-5.2', name: 'GLM-5.2', inputModalities: ['text'] },
+  { id: 'GLM-5.3', name: 'GLM-5.3', inputModalities: ['text'] },
+  { id: 'GLM-5.3-Flash', name: 'GLM-5.3-Flash', inputModalities: ['text'] },
+  { id: 'GLM-5.3-FlashX', name: 'GLM-5.3-FlashX', inputModalities: ['text'] },
+  { id: 'grok-4.6', name: 'grok-4.6', inputModalities: ['text', 'image'] },
+  { id: 'grok-4.7', name: 'grok-4.7', inputModalities: ['text', 'image'] },
+  { id: 'grok-4.5', name: 'grok-4.5', inputModalities: ['text', 'image'] },
+  { id: 'grok-4.3', name: 'grok-4.3', inputModalities: ['text', 'image'] },
+  { id: 'qwen3.6-plus', name: 'qwen3.6-plus', inputModalities: ['text', 'image'] },
+  { id: 'qwen3.6-flash', name: 'qwen3.6-flash', inputModalities: ['text', 'image'] },
+  { id: 'qwen3.7-plus', name: 'qwen3.7-plus', inputModalities: ['text', 'image'] },
+  { id: 'qwen3.7-max', name: 'qwen3.7-max', inputModalities: ['text'] },
+  { id: 'qwen3.7-flash', name: 'qwen3.7-flash', inputModalities: ['text', 'image'] },
+  { id: 'qwen3.8-flash', name: 'qwen3.8-flash', inputModalities: ['text', 'image'] },
+  { id: 'qwen3.8-max', name: 'qwen3.8-max', inputModalities: ['text', 'image'] },
+  { id: 'qwen3.8-omni-flash', name: 'qwen3.8-omni-flash', inputModalities: ['text', 'image'] },
+  { id: 'gpt-6-sol', name: 'gpt-6-sol', inputModalities: ['text', 'image'] },
+  { id: 'gpt-6-luna', name: 'gpt-6-luna', inputModalities: ['text', 'image'] },
+  { id: 'gpt-6.1-sol', name: 'gpt-6.1-sol', inputModalities: ['text', 'image'] },
+  { id: 'gpt-6-astra', name: 'gpt-6-astra', inputModalities: ['text', 'image'] },
+  { id: 'gpt-5.6-sol', name: 'gpt-5.6-sol', inputModalities: ['text', 'image'] },
+  { id: 'gpt-5.6-terra', name: 'gpt-5.6-terra', inputModalities: ['text', 'image'] },
+  { id: 'gpt-5.5', name: 'gpt-5.5', inputModalities: ['text', 'image'] },
+  { id: 'gpt-5.6-terra-pro', name: 'gpt-5.6-terra-pro', inputModalities: ['text', 'image'] },
+  { id: 'gpt-5.6-luna', name: 'gpt-5.6-luna', inputModalities: ['text', 'image'] },
+  { id: 'gpt-5.6-luna-pro', name: 'gpt-5.6-luna-pro', inputModalities: ['text', 'image'] },
+  { id: 'gpt-5.4', name: 'gpt-5.4', inputModalities: ['text', 'image'] },
+  { id: 'kimi-k3.1-pro', name: 'kimi-k3.1-pro', inputModalities: ['text', 'image'] },
+  { id: 'kimi-k3.1-pro-highspeed', name: 'kimi-k3.1-pro-highspeed', inputModalities: ['text', 'image'] },
+  { id: 'kimi-k2.7-code', name: 'kimi-k2.7-code', inputModalities: ['text'] },
+  { id: 'kimi-k3', name: 'kimi-k3', inputModalities: ['text', 'image'] },
+  { id: 'gemini-3-flash-preview', name: 'gemini-3-flash-preview', inputModalities: ['text', 'image'] },
+  { id: 'gemini-3.1-pro-preview', name: 'gemini-3.1-pro-preview', inputModalities: ['text', 'image'] },
+  { id: 'gemini-3.1-flash-lite', name: 'gemini-3.1-flash-lite', inputModalities: ['text', 'image'] },
+  { id: 'gemini-3.5-flash', name: 'gemini-3.5-flash', inputModalities: ['text', 'image'] },
+  { id: 'gemini-3.5-flash-lite', name: 'gemini-3.5-flash-lite', inputModalities: ['text', 'image'] },
+  { id: 'gemini-3.6-flash', name: 'gemini-3.6-flash', inputModalities: ['text', 'image'] },
+  { id: 'gemini-3.7-flash', name: 'gemini-3.7-flash', inputModalities: ['text', 'image'] },
+  { id: 'gemini-3.8-flash', name: 'gemini-3.8-flash', inputModalities: ['text', 'image'] },
+  { id: 'gemini-4-argon', name: 'gemini-4-argon', inputModalities: ['text', 'image'] },
+  { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro', inputModalities: ['text'] },
+  { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash', inputModalities: ['text'] },
+  {
+    id: 'claude-sonnet-4.5',
+    name: 'claude-sonnet-4.5',
+    contextWindow: 200_000,
+    maxTokens: 64_000,
+    inputModalities: ['text', 'image'],
+  },
+  { id: 'claude-haiku-4.5', name: 'claude-haiku-4.5', inputModalities: ['text', 'image'] },
+  {
+    id: 'claude-opus-4.5',
+    name: 'claude-opus-4.5',
+    contextWindow: 200_000,
+    maxTokens: 64_000,
+    inputModalities: ['text', 'image'],
+  },
+  {
+    id: 'claude-opus-4.6',
+    name: 'claude-opus-4.6',
+    contextWindow: 200_000,
+    maxTokens: 64_000,
+    inputModalities: ['text', 'image'],
+  },
+  {
+    id: 'claude-sonnet-4.6',
+    name: 'claude-sonnet-4.6',
+    contextWindow: 200_000,
+    maxTokens: 64_000,
+    inputModalities: ['text', 'image'],
+  },
+  {
+    id: 'claude-opus-4.7',
+    name: 'claude-opus-4.7',
+    contextWindow: 200_000,
+    maxTokens: 64_000,
+    inputModalities: ['text', 'image'],
+  },
+  {
+    id: 'claude-opus-4.8',
+    name: 'claude-opus-4.8',
+    contextWindow: 200_000,
+    maxTokens: 64_000,
+    inputModalities: ['text', 'image'],
+  },
+  { id: 'claude-fable-5', name: 'claude-fable-5', inputModalities: ['text', 'image'] },
+  {
+    id: 'claude-sonnet-5',
+    name: 'claude-sonnet-5',
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    inputModalities: ['text', 'image'],
+  },
+  {
+    id: 'claude-opus-5',
+    name: 'claude-opus-5',
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    inputModalities: ['text', 'image'],
+  },
+  { id: 'claude-fable-5.1', name: 'claude-fable-5.1', inputModalities: ['text', 'image'] },
+  {
+    id: 'claude-opus-5.5',
+    name: 'claude-opus-5.5',
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    inputModalities: ['text', 'image'],
+  },
+  {
+    id: 'claude-sonnet-5.5',
+    name: 'claude-sonnet-5.5',
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    inputModalities: ['text', 'image'],
+  },
+  {
+    id: 'claude-haiku-5.5',
+    name: 'claude-haiku-5.5',
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    inputModalities: ['text', 'image'],
+  },
+  { id: 'doubao-seed-2-1-pro', name: 'doubao-seed-2-1-pro', inputModalities: ['text', 'image'] },
+  { id: 'doubao-seed-2-1-lite', name: 'doubao-seed-2-1-lite', inputModalities: ['text', 'image'] },
+  { id: 'doubao-seed-2-0-lite', name: 'doubao-seed-2-0-lite', inputModalities: ['text', 'image'] },
+  { id: 'doubao-seed-2-0-mini', name: 'doubao-seed-2-0-mini', inputModalities: ['text', 'image'] },
+  { id: 'doubao-seed-2-0-code-preview', name: 'doubao-seed-2-0-code-preview', inputModalities: ['text'] },
+  { id: 'doubao-seed-character', name: 'doubao-seed-character', inputModalities: ['text', 'image'] },
+  { id: 'doubao-seed-2-1-turbo', name: 'doubao-seed-2-1-turbo', inputModalities: ['text', 'image'] },
+]
