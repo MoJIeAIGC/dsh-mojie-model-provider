@@ -11,3 +11,5 @@ dist/
 tests/
 # developer notes: the tracked README.md is the user-facing guide
 devExplan.md
+# local scratch (proxy snapshot used while debugging network access)
+before.txt

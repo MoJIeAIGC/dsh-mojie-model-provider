@@ -56,7 +56,7 @@
 打开终端（PowerShell / Terminal）：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/latest/download/mojieai-dsh-mojie-model-provider-0.0.0.tgz
+dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/latest/download/mojieai-dsh-mojie-model-provider-0.1.0.tgz
 ```
 
 > [!NOTE]
