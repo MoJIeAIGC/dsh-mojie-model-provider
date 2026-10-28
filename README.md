@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">Mojie dsh-mojie-model-provider</h1>
-<h2 align="center">MojieAgentFlow全站模型deepseek-harness插件</h2>
+<p align="center">MojieAgentFlow全站模型deepseek-harness插件</p>
 
 <p align="center">
   <a href="https://github.com/MoJIeAIGC">GitHub</a> ·
