@@ -2,7 +2,8 @@
   <a href="https://mojieaigc.com"><img src="docs/assets/mojie-logo.png" alt="Mojie" width="112" /></a>
 </p>
 
-<h1 align="center">Mojie 模型插件</h1>
+<h1 align="center">Mojie dsh-mojie-model-provider</h1>
+<h2 align="center">MojieAgentFlow全站模型deepseek-harness插件</h2>
 
 <p align="center">
   <a href="https://github.com/MoJIeAIGC">GitHub</a> ·
