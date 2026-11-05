@@ -10,6 +10,20 @@ import { modelsURL, normalizeBaseURL } from './core/endpoint.js'
 import type { ResolvedConfig } from './config.js'
 import { mergeCatalog } from './catalog.js'
 
+/**
+ * One discovered model, plus the one capability Mojie discloses that
+ * `LlmDiscoveredModel` has no field for.
+ *
+ * The generic discovery contract deliberately stays provider-neutral, so the
+ * reasoning flag lives here and only `catalog.ts` reads it: a model the site
+ * marks `supports_reasoning: false` gets no thinking ladder, while an unlisted
+ * capability stays unknown and the vendor recommendation applies.
+ */
+export interface MojieDiscoveredModel extends LlmDiscoveredModel {
+  /** `/v1/models` `supports_reasoning`; absent when the listing did not say. */
+  readonly supportsReasoning?: boolean
+}
+
 interface ModelsEnvelope {
   object?: unknown
   data?: unknown
@@ -24,6 +38,7 @@ interface ModelsRow {
   context_window?: unknown
   max_output_tokens?: unknown
   input_modalities?: unknown
+  supports_reasoning?: unknown
 }
 
 function asString(value: unknown): string | undefined {
@@ -53,7 +68,7 @@ export async function fetchModelListing(
   baseURL: string,
   apiKey: string,
   signal?: AbortSignal,
-): Promise<LlmDiscoveredModel[]> {
+): Promise<MojieDiscoveredModel[]> {
   const normalized = normalizeBaseURL(baseURL)
   const usable = assertUsableApiKey(apiKey, 'mojie', 'apiKeyEnv')
   let response: Response
@@ -98,7 +113,7 @@ export async function discoverDraftModels(
   config: ResolvedConfig,
   request: LlmModelDiscoveryRequest,
   signal?: AbortSignal,
-): Promise<LlmDiscoveredModel[]> {
+): Promise<MojieDiscoveredModel[]> {
   const baseURL = request.baseURL ?? config.baseURL
   if (request.apiKey === undefined) {
     throw new LlmError('mojie model discovery requires an API key', 'MISSING_CREDENTIAL')
@@ -120,7 +135,7 @@ export async function listRouteModels(
   config: ResolvedConfig,
   apiKey: string,
   signal?: AbortSignal,
-): Promise<readonly LlmDiscoveredModel[]> {
+): Promise<readonly MojieDiscoveredModel[]> {
   return fetchModelListing(config.baseURL, apiKey, signal)
 }
 
@@ -142,12 +157,12 @@ export async function buildProviderCatalog(
   return mergeCatalog(provider, config.models, discovered)
 }
 
-function readListing(body: unknown): LlmDiscoveredModel[] {
+function readListing(body: unknown): MojieDiscoveredModel[] {
   const envelope = body as ModelsEnvelope | null
   if (envelope === null || typeof envelope !== 'object' || !Array.isArray(envelope.data)) {
     throw new LlmError('Mojie /v1/models has no data array', 'DISCOVERY_FAILED')
   }
-  const result: LlmDiscoveredModel[] = []
+  const result: MojieDiscoveredModel[] = []
   const seen = new Set<string>()
   for (const raw of envelope.data as ModelsRow[]) {
     const id = asString(raw.id)
@@ -158,12 +173,16 @@ function readListing(body: unknown): LlmDiscoveredModel[] {
     const contextWindow = asPositiveInteger(raw.context_length) ?? asPositiveInteger(raw.context_window)
     const maxTokens = asPositiveInteger(raw.max_output_tokens)
     const inputModalities = asModalities(raw.input_modalities)
+    // Only a real boolean answers "can this model think"; anything else stays
+    // unknown so the vendor recommendation still applies.
+    const supportsReasoning = typeof raw.supports_reasoning === 'boolean' ? raw.supports_reasoning : undefined
     result.push({
       id,
       name: asString(raw.name) ?? id,
       ...contextWindow === undefined ? {} : { contextWindow },
       ...maxTokens === undefined ? {} : { maxTokens },
       ...inputModalities === undefined ? {} : { inputModalities },
+      ...supportsReasoning === undefined ? {} : { supportsReasoning },
     })
   }
   return result

@@ -1,6 +1,7 @@
 import {
   BlockAssembler,
   LlmError,
+  ReasoningEffortId,
   type ContentBlock,
   type FinishReason,
   type GenerateOptions,
@@ -45,6 +46,14 @@ export interface MojieChatRequest {
   readonly temperature?: number
   /** Output cap, forwarded as `max_output_tokens`. */
   readonly maxTokens?: number
+  /**
+   * Thinking level, forwarded as `reasoning.effort`.
+   *
+   * The id is opaque to DSH: use one from
+   * `resolveModel(model).reasoning.efforts`, or any vendor-specific value the
+   * relay accepts. Omitted means the route default applies.
+   */
+  readonly reasoningEffort?: string
   /** Caller cancellation. */
   readonly signal?: AbortSignal
 }
@@ -83,6 +92,12 @@ export interface MojieClientOptions {
   readonly fetch?: typeof fetch
   /** Provider route id reported by {@link MojieClient.resolveModel}; defaults to `mojie`. */
   readonly provider?: string
+  /**
+   * Publish the per-vendor thinking ladder from {@link MojieClient.resolveModel}.
+   * Defaults to `true`; `false` mirrors a provider configuration that turned
+   * `reasoningDefaults` off.
+   */
+  readonly reasoningDefaults?: boolean
 }
 
 /**
@@ -150,10 +165,12 @@ export class MojieClient {
   /**
    * Shipped metadata resolved with provider defaults, without any network call.
    * @param id - exact provider model id.
-   * @returns resolved model metadata (context window, output cap, modalities).
+   * @returns resolved model metadata (context window, output cap, modalities, reasoning).
    */
   resolveModel(id: string): LlmResolvedModelInfo {
-    return mergeResolvedModelInfo(this.provider, id)
+    return mergeResolvedModelInfo(this.provider, id, undefined, undefined, {
+      reasoningDefaults: this.options.reasoningDefaults ?? true,
+    })
   }
 
   /**
@@ -226,6 +243,9 @@ export class MojieClient {
       ...request.tools === undefined ? {} : { tools: [...request.tools] },
       ...request.temperature === undefined ? {} : { temperature: request.temperature },
       ...request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens },
+      ...request.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: ReasoningEffortId(request.reasoningEffort) },
     }
   }
 }

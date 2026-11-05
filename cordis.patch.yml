@@ -10,7 +10,13 @@
       config:
         apiKeyEnv: MOJIE_API_KEY
         baseURL: 'https://mojieaigc.com'
-        # Empty means: use /v1/models discovery plus the built-in catalog.
-        # Add explicit entries here to pin models; include reasoningEfforts
-        # only for models that actually expose selectable efforts.
+        # Empty means: inherit /v1/models discovery plus the built-in catalog.
+        # The Models page card fills this list for you (model rows, context
+        # windows, input types, and thinking levels); hand-written entries here
+        # still win and pin the values. Thinking levels come from the per-vendor
+        # recommendation unless a row pins `reasoningEfforts`, and
+        # `reasoning: 'off'` declares a model that cannot think at all.
         models: []
+        # Send `reasoning.effort` for every model that does not opt out, even
+        # though the site publishes no effort vocabulary. Set false to stop.
+        reasoningDefaults: true

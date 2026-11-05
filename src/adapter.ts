@@ -7,7 +7,6 @@ import {
   requiredImageOffload,
   type GenerateOptions,
   type ImageAttachmentAccessResolver,
-  type LlmDiscoveredModel,
   type LlmModelInfo,
   type LlmResolvedModelInfo,
   type RequestMessage,
@@ -15,7 +14,7 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import type { AttachmentStore, ImageAttachmentRef, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { requestImageDimensions } from '@deepseek-ai/dsh-attachment'
-import { fetchModelListing } from './discovery.js'
+import { fetchModelListing, type MojieDiscoveredModel } from './discovery.js'
 import { mergeCatalog, mergeResolvedModelInfo } from './catalog.js'
 import { responsesURL, type ResolvedConfig } from './config.js'
 import { serializeRequest } from './serialize.js'
@@ -27,7 +26,7 @@ const CATALOG_TTL_MS = 10 * 60_000
 interface CatalogCache {
   readonly key: string
   readonly at: number
-  readonly models: readonly LlmDiscoveredModel[]
+  readonly models: readonly MojieDiscoveredModel[]
 }
 
 /**
@@ -83,14 +82,16 @@ export class MojieAdapter extends LlmAdapter {
     provider: string,
     model: string,
     config: ResolvedConfig,
-    discovered?: LlmDiscoveredModel,
+    discovered?: MojieDiscoveredModel,
   ): LlmResolvedModelInfo {
     const configured = config.models.find((entry) => entry.id === model)
-    return mergeResolvedModelInfo(provider, model, configured, discovered)
+    return mergeResolvedModelInfo(provider, model, configured, discovered, {
+      reasoningDefaults: config.reasoningDefaults,
+    })
   }
 
   /** Discovery row for one model from the last successful listing, when it still matches the endpoint. */
-  private discoveredModel(config: ResolvedConfig, model: string): LlmDiscoveredModel | undefined {
+  private discoveredModel(config: ResolvedConfig, model: string): MojieDiscoveredModel | undefined {
     const cached = this.catalog
     if (cached === undefined || cached.key !== config.baseURL) return undefined
     return cached.models.find((entry) => entry.id === model)
@@ -100,7 +101,7 @@ export class MojieAdapter extends LlmAdapter {
     config: ResolvedConfig,
     apiKey: string,
     force: boolean,
-  ): Promise<readonly LlmDiscoveredModel[]> {
+  ): Promise<readonly MojieDiscoveredModel[]> {
     const cached = this.catalog
     if (!force
       && cached !== undefined

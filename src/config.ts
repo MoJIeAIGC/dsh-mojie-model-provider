@@ -24,6 +24,12 @@ export interface MojieModelConfig {
   reasoningEfforts?: string[]
   /** Default reasoning effort when callers omit one. */
   defaultReasoningEffort?: string
+  /**
+   * Thinking ladder source. `'auto'` (default) applies the per-vendor
+   * recommendation; `'off'` declares the model as non-reasoning, hiding the
+   * selector and keeping `reasoning` out of every request.
+   */
+  reasoning?: 'auto' | 'off'
   /** Mid-conversation system prompt mode when confirmed. */
   systemPromptUpdate?: SystemPromptUpdate
 }
@@ -41,6 +47,14 @@ export interface Config {
   baseURL: Volatile<string>
   /** Advisory model metadata and overrides. */
   models: Volatile<MojieModelConfig[]>
+  /**
+   * Apply the per-vendor thinking ladder to models that declare no efforts.
+   *
+   * The site publishes no effort vocabulary, so the plugin recommends one per
+   * vendor and sends it as `reasoning.effort` regardless of whether the relay
+   * honors it. Disable this to stop sending the field for unconfigured models.
+   */
+  reasoningDefaults: Volatile<boolean>
   /**
    * Time allowed from sending the request until the response headers arrive.
    * Covers connect, TLS, upload, and upstream queueing: a gateway that keeps the
@@ -77,8 +91,6 @@ export interface Config {
   imagePollIntervalMs: Volatile<number>
   /** How long one tool call waits inline before handing the task id back. */
   imageTaskTimeoutMs: Volatile<number>
-  /** Byte cap for downloading one generated image into attachments. */
-  imageDownloadMaxBytes: Volatile<number>
 }
 
 /** Plain values accepted by the resolver. */
@@ -94,6 +106,7 @@ export interface ResolvedConfig {
   apiKeyEnv: string
   baseURL: string
   models: MojieModelConfig[]
+  reasoningDefaults: boolean
   firstByteTimeoutMs: number
   streamIdleTimeoutMs: number
   requestTimeoutMs: number
@@ -106,7 +119,6 @@ export interface ResolvedConfig {
   imageDefaultAspectRatio: string
   imagePollIntervalMs: number
   imageTaskTimeoutMs: number
-  imageDownloadMaxBytes: number
 }
 
 /**
@@ -134,6 +146,7 @@ const modelSchema: z<MojieModelConfig> = z.object({
   inputModalities: z.array(modalitySchema),
   reasoningEfforts: z.array(reasoningEffortSchema),
   defaultReasoningEffort: reasoningEffortSchema,
+  reasoning: z.union(['auto', 'off']),
   systemPromptUpdate: z.union(['in-history']),
 })
 
@@ -147,6 +160,11 @@ export const Config = z.object({
   apiKeyEnv: z.string().role('credential-ref').default('MOJIE_API_KEY').volatile(),
   baseURL: z.string().default('https://www.mojieaigc.com').volatile(),
   models: z.array(modelSchema).default([]).volatile(),
+  // Thinking: the site publishes only `supports_reasoning`, so the plugin
+  // recommends a ladder per vendor and sends `reasoning.effort` for every model
+  // that does not opt out. Upstream rejection is an upstream bug, not a reason to
+  // retry without the parameter.
+  reasoningDefaults: z.boolean().default(true).volatile(),
   // Wait for response headers at most this long; a silent gateway fails fast.
   firstByteTimeoutMs: z.number().min(1).default(60_000).volatile(),
   // Silence between received bytes; SSE heartbeats count as activity. Long
@@ -166,7 +184,6 @@ export const Config = z.object({
   imageDefaultAspectRatio: z.string().default('1:1').volatile(),
   imagePollIntervalMs: z.number().min(100).default(3_000).volatile(),
   imageTaskTimeoutMs: z.number().min(1_000).default(600_000).volatile(),
-  imageDownloadMaxBytes: z.number().min(1).default(20 * 1024 * 1024).volatile(),
 })
 
 /**
@@ -202,6 +219,7 @@ export function normalizeModel(model: MojieModelConfig): MojieModelConfig {
     inputModalities: rawInputModalities,
     reasoningEfforts: rawReasoningEfforts,
     defaultReasoningEffort: rawDefaultReasoningEffort,
+    reasoning: rawReasoning,
     ...rest
   } = model
   const id = model.id.trim()
@@ -210,7 +228,7 @@ export function normalizeModel(model: MojieModelConfig): MojieModelConfig {
   const description = model.description?.trim()
   // Schemastery materializes an absent array as `[]`. An empty list means the
   // deployment declared no capability at all, so it must stay absent here and
-  // let built-in or discovered metadata answer instead of overriding it.
+  // let built-in, discovered, or vendor-recommended metadata answer instead.
   const inputModalities = rawInputModalities?.length === 0 ? undefined : rawInputModalities
   const reasoningEfforts = rawReasoningEfforts === undefined || rawReasoningEfforts.length === 0
     ? undefined
@@ -219,6 +237,11 @@ export function normalizeModel(model: MojieModelConfig): MojieModelConfig {
       if (value.length === 0) throw new LlmError(`mojie model "${id}" has an empty reasoning effort`, 'INVALID_CONFIG')
       return value
     })
+  if (reasoningEfforts !== undefined && new Set(reasoningEfforts).size !== reasoningEfforts.length) {
+    // DSH rejects duplicate effort ids with INVALID_MODEL_REASONING after the
+    // plugin already loaded; fail the config write instead of every request.
+    throw new LlmError(`mojie model "${id}" lists a duplicate reasoning effort`, 'INVALID_CONFIG')
+  }
   const defaultReasoningEffort = rawDefaultReasoningEffort?.trim()
   if (defaultReasoningEffort !== undefined) {
     if (defaultReasoningEffort.length === 0) {
@@ -236,6 +259,8 @@ export function normalizeModel(model: MojieModelConfig): MojieModelConfig {
     ...inputModalities === undefined ? {} : { inputModalities },
     ...reasoningEfforts === undefined ? {} : { reasoningEfforts },
     ...defaultReasoningEffort === undefined ? {} : { defaultReasoningEffort },
+    // `'auto'` is the default, so storing it would only be noise in the Models card.
+    ...rawReasoning === 'off' ? { reasoning: 'off' as const } : {},
   }
 }
 

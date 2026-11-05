@@ -27,7 +27,7 @@ interface WireResponse {
 interface BlockState {
   readonly key: string
   readonly index: number
-  readonly kind: 'text' | 'tool-call'
+  readonly kind: 'text' | 'tool-call' | 'reasoning'
   text: string
   id?: ReturnType<typeof ToolCallId>
   name?: string
@@ -109,6 +109,41 @@ function firstString(...values: unknown[]): string | undefined {
 }
 
 /**
+ * Text carried by a completed reasoning item.
+ *
+ * A reasoning output item ships thinking in `summary[].text` (the summarized
+ * form OpenAI hands back by default) or `content[].text` (the raw form); relays
+ * emit one, the other, or both.
+ * @param item - reasoning output item from `response.output_item.*`.
+ * @returns concatenated thinking text, empty when the item carries none.
+ */
+function reasoningText(item: Record<string, unknown>): string {
+  const parts: string[] = []
+  for (const field of ['summary', 'content'] as const) {
+    const entries = item[field]
+    if (!Array.isArray(entries)) continue
+    for (const entry of entries) {
+      if (isObject(entry) && typeof entry.text === 'string') parts.push(entry.text)
+    }
+  }
+  return parts.join('')
+}
+
+/**
+ * Output index of one reasoning event.
+ *
+ * Reasoning deltas address their item the same way text deltas do, but some
+ * relays omit `output_index` on summary deltas. A response carries one reasoning
+ * item in practice, so falling back to 0 keeps one block per item instead of
+ * splitting the stream across indexes.
+ * @param event - decoded SSE event.
+ * @returns the addressed output index.
+ */
+function outputIndexOf(event: Record<string, unknown>): number {
+  return typeof event.output_index === 'number' ? numberField(event.output_index, 'output_index') : 0
+}
+
+/**
  * Map a provider-reported failure onto DSH's provider-neutral error taxonomy.
  * Content refusals are not retryable, so they get their own code instead of
  * `SERVER`.
@@ -144,13 +179,16 @@ export function providerFailure(event: Record<string, unknown>): LlmError {
 
 /**
  * Whether translated blocks carry anything a reader would see.
+ *
+ * Reasoning is deliberately excluded: a completion that only thought and never
+ * answered is an empty response DSH should retry, not a silent success.
  * @param blocks - translated block states.
- * @returns true for non-empty text or any tool call.
+ * @returns true for non-empty visible text or any tool call.
  */
 function hasVisibleContent(blocks: ReadonlyMap<string, BlockState>): boolean {
   for (const block of blocks.values()) {
     if (block.kind === 'tool-call') return true
-    if (block.text.trim().length > 0) return true
+    if (block.kind === 'text' && block.text.trim().length > 0) return true
   }
   return false
 }
@@ -185,6 +223,18 @@ export async function* translate(events: AsyncIterable<SseEvent>): AsyncGenerato
       case 'response.output_item.added': {
         const outputIndex = numberField(event.output_index, 'output_index')
         const item = object(event.item)
+        if (item.type === 'reasoning') {
+          const state = ensureBlock(blocks, `reasoning:${outputIndex}`, 'reasoning', () => nextBlockIndex++)
+          if (!state.started) {
+            state.started = true
+            yield { type: 'block-start', index: state.index, blockType: 'reasoning' }
+          }
+          const initial = reasoningText(item)
+          if (state.text.length === 0 && initial.length > 0) {
+            state.text = initial
+            yield { type: 'reasoning-delta', index: state.index, text: initial }
+          }
+        }
         if (item.type === 'function_call') {
           const state = ensureBlock(blocks, `fc:${outputIndex}`, 'tool-call', () => nextBlockIndex++)
           if (!state.started) {
@@ -215,6 +265,45 @@ export async function* translate(events: AsyncIterable<SseEvent>): AsyncGenerato
             state.text += initial
             yield { type: 'text-delta', index: state.index, text: initial }
           }
+        }
+        if (part.type === 'reasoning_text' || part.type === 'summary_text') {
+          const state = ensureBlock(blocks, `reasoning:${outputIndex}`, 'reasoning', () => nextBlockIndex++)
+          if (!state.started) {
+            state.started = true
+            yield { type: 'block-start', index: state.index, blockType: 'reasoning' }
+          }
+          const initial = typeof part.text === 'string' ? part.text : ''
+          if (state.text.length === 0 && initial.length > 0) {
+            state.text = initial
+            yield { type: 'reasoning-delta', index: state.index, text: initial }
+          }
+        }
+        break
+      }
+      case 'response.reasoning_summary_text.delta':
+      case 'response.reasoning_text.delta': {
+        const outputIndex = outputIndexOf(event)
+        const state = ensureBlock(blocks, `reasoning:${outputIndex}`, 'reasoning', () => nextBlockIndex++)
+        if (!state.started) {
+          state.started = true
+          yield { type: 'block-start', index: state.index, blockType: 'reasoning' }
+        }
+        const delta = string(event.delta, 'delta')
+        state.text += delta
+        yield { type: 'reasoning-delta', index: state.index, text: delta }
+        break
+      }
+      case 'response.reasoning_summary_text.done':
+      case 'response.reasoning_text.done': {
+        const outputIndex = outputIndexOf(event)
+        const state = ensureBlock(blocks, `reasoning:${outputIndex}`, 'reasoning', () => nextBlockIndex++)
+        if (state.text.length === 0 && typeof event.text === 'string' && event.text.length > 0) {
+          if (!state.started) {
+            state.started = true
+            yield { type: 'block-start', index: state.index, blockType: 'reasoning' }
+          }
+          state.text = event.text
+          yield { type: 'reasoning-delta', index: state.index, text: event.text }
         }
         break
       }
@@ -257,6 +346,21 @@ export async function* translate(events: AsyncIterable<SseEvent>): AsyncGenerato
           if (!state.finished) {
             state.finished = true
             yield { type: 'block-end', index: state.index, block: { type: 'text', text: state.text } }
+          }
+        }
+        if (part.type === 'reasoning_text' || part.type === 'summary_text') {
+          const state = ensureBlock(blocks, `reasoning:${outputIndex}`, 'reasoning', () => nextBlockIndex++)
+          if (!state.started) {
+            state.started = true
+            yield { type: 'block-start', index: state.index, blockType: 'reasoning' }
+          }
+          if (state.text.length === 0 && typeof part.text === 'string' && part.text.length > 0) {
+            state.text = part.text
+            yield { type: 'reasoning-delta', index: state.index, text: part.text }
+          }
+          if (!state.finished) {
+            state.finished = true
+            yield { type: 'block-end', index: state.index, block: { type: 'reasoning', text: state.text } }
           }
         }
         break
@@ -323,6 +427,22 @@ export async function* translate(events: AsyncIterable<SseEvent>): AsyncGenerato
             }
           }
         }
+        if (item.type === 'reasoning') {
+          const state = ensureBlock(blocks, `reasoning:${outputIndex}`, 'reasoning', () => nextBlockIndex++)
+          if (!state.started) {
+            state.started = true
+            yield { type: 'block-start', index: state.index, blockType: 'reasoning' }
+          }
+          const full = reasoningText(item)
+          if (state.text.length === 0 && full.length > 0) {
+            state.text = full
+            yield { type: 'reasoning-delta', index: state.index, text: full }
+          }
+          if (!state.finished) {
+            state.finished = true
+            yield { type: 'block-end', index: state.index, block: { type: 'reasoning', text: state.text } }
+          }
+        }
         break
       }
       case 'response.completed': {
@@ -360,8 +480,8 @@ export async function* translate(events: AsyncIterable<SseEvent>): AsyncGenerato
     throw new LlmError('Mojie Responses stream ended before response.completed', 'STREAM_CLOSED')
   }
   if (finalReason.kind === 'stop' && !hasVisibleContent(blocks)) {
-    // A "completed" response carrying only hidden reasoning (e.g. 17 output
-    // tokens and an empty text block) must be retryable, not a silent success.
+    // A "completed" response that only thought (17 output tokens, a reasoning
+    // block, no answer) must be retryable, not a silent success.
     throw new LlmError('Mojie Responses completed with no visible text or tool calls', EMPTY_RESPONSE_CODE)
   }
 

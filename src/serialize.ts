@@ -21,6 +21,15 @@ export interface MojieResponsesRequest {
   temperature?: number
   max_output_tokens?: number
   top_p?: number
+  /**
+   * Thinking level for this call, in the OpenAI Responses shape.
+   *
+   * DSH's effort id is adapter-owned and opaque, so it is forwarded verbatim; the
+   * site documents no vocabulary and is treated as the authority on whether the
+   * value means anything. A rejection surfaces as `INVALID_REQUEST` instead of
+   * being retried without the field.
+   */
+  reasoning?: { effort: string }
 }
 
 /**
@@ -252,5 +261,8 @@ export function serializeRequest(
     stream: true,
     ...options.temperature === undefined ? {} : { temperature: options.temperature },
     ...options.maxTokens === undefined ? {} : { max_output_tokens: options.maxTokens },
+    ...options.reasoningEffort === undefined
+      ? {}
+      : { reasoning: { effort: String(options.reasoningEffort) } },
   }
 }

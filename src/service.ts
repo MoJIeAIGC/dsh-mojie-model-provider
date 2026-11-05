@@ -95,6 +95,7 @@ export class MojieService extends Service {
       streamIdleTimeoutMs: config.streamIdleTimeoutMs,
       requestTimeoutMs: config.requestTimeoutMs,
       provider: this.provider,
+      reasoningDefaults: config.reasoningDefaults,
     })
   }
 
@@ -119,7 +120,9 @@ export class MojieService extends Service {
   resolveModel(id: string): LlmResolvedModelInfo {
     const config = this.config()
     const configured = config.models.find((entry) => entry.id === id)
-    return mergeResolvedModelInfo(this.provider, id, configured)
+    return mergeResolvedModelInfo(this.provider, id, configured, undefined, {
+      reasoningDefaults: config.reasoningDefaults,
+    })
   }
 
   /**

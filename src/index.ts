@@ -37,8 +37,18 @@ export type {
 export { MOJIE_SERVICE, MojieService } from './service.js'
 export type { MojieChatTextOptions, MojieServiceOptions } from './service.js'
 export { builtinModel } from './catalog.js'
-export type { MojieCatalogModel } from './catalog.js'
+export type { MojieCatalogModel, ResolveModelOptions } from './catalog.js'
 export { fetchModelListing } from './discovery.js'
+export type { MojieDiscoveredModel } from './discovery.js'
+/**
+ * Thinking vocabulary shared with other plugins.
+ *
+ * `vendorReasoningProfile` answers "which ladder should this model id get" and
+ * `describeEfforts` labels a hand-written ladder, so an embedder recommends the
+ * same levels the provider route publishes.
+ */
+export { describeEfforts, vendorReasoningProfile } from './reasoning.js'
+export type { ReasoningRung, VendorReasoningProfile } from './reasoning.js'
 
 /**
  * Public API for other plugins — image side.
@@ -199,7 +209,6 @@ export function apply(ctx: Context, config: PluginConfig): void {
       apiKey: await resolveCredential(ctx, current.apiKeyEnv),
       pollIntervalMs: current.imagePollIntervalMs,
       taskTimeoutMs: current.imageTaskTimeoutMs,
-      downloadMaxBytes: current.imageDownloadMaxBytes,
     })
   }
   if (initial.imageTools) {
@@ -208,6 +217,22 @@ export function apply(ctx: Context, config: PluginConfig): void {
         config: readConfig,
         media,
         attachments: () => scoped.get('attachments'),
+        // A generated picture belongs to the calling Session's directory; the
+        // working-directory service owns the effective path. Without a Session
+        // identity there is no directory to write into, so the tool falls back
+        // to the attachment store instead of guessing the process directory.
+        sessionDirectory: async (agent, signal) => {
+          const workingDirectory = scoped.get('workingDirectory') as {
+            ensure?(agent: unknown, signal?: AbortSignal): Promise<string>
+          } | undefined
+          if (workingDirectory?.ensure === undefined) {
+            throw new Error('this host has no working-directory service')
+          }
+          if (agent === undefined) {
+            throw new Error('this call has no Session identity')
+          }
+          return await workingDirectory.ensure(agent, signal)
+        },
       })
     })
     // `/image` is the human entry: it talks to the media gateway directly, so the

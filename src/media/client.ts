@@ -43,8 +43,12 @@ export interface MojieMediaRequest {
   readonly resolution?: string
   /** Provider aspect ratio, e.g. `1:1`, `16:9`. */
   readonly aspectRatio?: string
-  /** Reference image for an edit: HTTPS URL, `data:` URL, or local path. */
-  readonly inputImage?: string
+  /**
+   * Reference images for an edit, in caller order: HTTPS URLs, `data:` URLs, or
+   * local paths the gateway can read. The provider field is `input_image_urls`,
+   * and a multi-image edit keeps this order.
+   */
+  readonly inputImages?: readonly string[]
   /** Provider-specific extras forwarded verbatim. */
   readonly extra?: Readonly<Record<string, unknown>>
 }
@@ -59,8 +63,6 @@ export interface MojieMediaClientOptions {
   readonly pollIntervalMs?: number
   /** Inline wait before returning the pending task id; defaults to 10 minutes. */
   readonly taskTimeoutMs?: number
-  /** Byte cap for downloading one image; defaults to 20 MiB. */
-  readonly downloadMaxBytes?: number
   /** Fetch implementation, injectable for tests. */
   readonly fetch?: typeof fetch
 }
@@ -121,7 +123,9 @@ export class MojieMediaClient {
       prompt: request.prompt,
       ...request.resolution === undefined ? {} : { resolution: request.resolution },
       ...request.aspectRatio === undefined ? {} : { aspect_ratio: request.aspectRatio },
-      ...request.inputImage === undefined ? {} : { input_image: request.inputImage },
+      ...request.inputImages === undefined || request.inputImages.length === 0
+        ? {}
+        : { input_image_urls: [...request.inputImages] },
       ...request.extra ?? {},
     }
     const body = await this.request('POST', this.tasksEndpoint, payload, signal)
@@ -174,10 +178,14 @@ export class MojieMediaClient {
 
   /**
    * Download one generated image and verify its media type.
+   *
+   * There is deliberately no byte cap: the provider's original is the artifact
+   * the user asked for, so a large image must still be saved. The caller decides
+   * where it goes and what a display copy may do.
    * @param image - image entry from a settled task.
    * @param signal - optional cancellation.
    * @returns bytes and the sniffed/declared media type.
-   * @throws {LlmError} `UNSUPPORTED_CONTENT` for a non-image or oversized result.
+   * @throws {LlmError} `UNSUPPORTED_CONTENT` for a non-image result.
    */
   async download(image: MojieMediaImage, signal?: AbortSignal): Promise<{ data: Uint8Array; mediaType: ImageMediaType }> {
     const fetchImpl = this.options.fetch ?? fetch
@@ -188,15 +196,7 @@ export class MojieMediaClient {
     if (!response.ok) {
       throw new LlmError(`could not download the generated image (${response.status})`, 'MEDIA_DOWNLOAD_FAILED', { status: response.status })
     }
-    const maxBytes = this.options.downloadMaxBytes ?? 20 * 1024 * 1024
-    const declared = Number(response.headers.get('content-length'))
-    if (Number.isFinite(declared) && declared > maxBytes) {
-      throw new LlmError(`generated image is ${declared} bytes, over the ${maxBytes}-byte budget`, 'UNSUPPORTED_CONTENT')
-    }
     const data = new Uint8Array(await response.arrayBuffer())
-    if (data.byteLength > maxBytes) {
-      throw new LlmError(`generated image is ${data.byteLength} bytes, over the ${maxBytes}-byte budget`, 'UNSUPPORTED_CONTENT')
-    }
     const sniffed = sniffImageMediaType(data)
     const declaredType = image.mimeType ?? response.headers.get('content-type')?.split(';')[0]?.trim()
     const mediaType = sniffed ?? (SUPPORTED_IMAGE_TYPES.find((type) => type === declaredType))

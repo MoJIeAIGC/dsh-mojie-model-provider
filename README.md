@@ -11,53 +11,76 @@
   <a href="https://www.douyin.com/user/MS4wLjABAAAA3JbjlCqKd8WXklSYmO64wxWeMBg4efViyTg8Gz6VZdI">抖音</a>
 </p>
 
-## 这是什么
 由MojieAI开发的deepseek-harness插件，用于将Mojieaigc.com的所有平台能力无缝接入到DSH中，无需多余配置，直接让你的DSH拥有原生多模型，生图生视频能力。
 
 | 用一个 Key，聊全球主流模型 | 一句话，让 AI 出图 | 像原生模型一样用 |
 | :-- | :-- | :-- |
-| GPT、Claude、Gemini、Qwen、DeepSeek、豆包、Kimi、Grok、GLM 等主流模型，全部出现在 DSH 的模型下拉里。 | `/image 一只戴帽子的猫` 直接把图画进对话；也可以对 AI 说「帮我画……」，它自己调用画图工具。 | 流式输出、工具调用、图片输入、上下文窗口，全部沿用 DSH 原生能力，聊天习惯不用改。 |
+| GPT、Claude、Gemini、Qwen、DeepSeek、豆包、Kimi、Grok、GLM 等主流模型，全部出现在 DSH 的模型下拉里。 | `/image 一只戴帽子的猫` 直接把图画进对话；也可以对 AI 说「帮我画……」，它自己调用画图工具。 | 全部沿用 DSH 原生能力，习惯不用改 |
 
-插件做三件事，并且只做这三件事：
-
-- **接入模型** —— 把 Mojie 的 `/v1/models` 与聊天接口映射成一条 DSH provider 路由（`mojie`）；
-- **接入画图** —— 提供 `/image` 斜杠命令和 4 个原生画图工具，结果图存进本机附件目录；
-- **接入视频**(暂待更新) —— 提供 `/video` 斜杠命令和 原生视频工具，结果视频存进本机附件目录；
-- **保管钥匙** —— API Key 走 DSH 的凭据服务或环境变量，不进插件配置，也不进对话内容。
 
 ---
 
 ## 快速开始
 
-> 🚀 三步：装插件 → 填 Key → 开始聊天，全程不需要写代码。
+> 🚀 三步：装插件 → 填 Key → 开始使用。
 
-### 第 0 步 · 准备三样东西
+## 安装前的准备
 
-1. **DSH**：已经装好并能正常聊天，版本 `0.2.1-rc.2` 及以上（桌面版或命令行版都行）。
-2. **Mojie 账号**：打开 <https://mojieaigc.com> 注册 / 登录。
-3. **API Key**：登录后进入「个人中心」→「API-KEY」→ 点复制。
+### 1. DSH 已经装好
 
-> [!TIP]
-> 聊天按 token 计费、画图按张 / 分辨率计费，都从主站点数里扣。先确认余额，再开始玩。
+桌面版或命令行版都行，能打开、能收发消息就可以。
+
+- **桌面版**：在「设置 → 通用」里能看到「当前版本：x.x.x」；
+- **命令行版**：在终端里执行：
+
+```powershell
+dsh --version
+```
+
+打印出 `0.2.1-rc.2` 或更高版本就可以继续。
+
+### 1. 创建APIKEY
+1. 登录 [mojieaigc.com](https://www.mojieaigc.com)；
+2. 点击右上角**个人头像**；
+3. 进入 **我的APIKEY**；
+4. 点击**新建密钥**，给 Key 起个名字（例如 `codex`），复制生成的那串。
+
+![头像菜单里的「我的APIKEY」入口](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/apikey1.png)
+
+进入后是 APIKEY 管理页，点右上角 **新建密钥**：
+
+![APIKEY 管理页，右上角新建密钥](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/apikey2.png)
+
+![新建 API Key 弹窗](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/create_apikey.png)
+
+创建后回到列表，点 Key 后面的复制图标把它复制走：
+
+![点复制图标复制 Key](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/copy_apikey.png)
+
 
 > [!WARNING]
-> 这串 Key 就是你的钥匙。不要发到群里、贴进截图，也不要提交到代码仓库。
+> APIKEY 是你与 MojieAgentFlow 通信的重要凭证，请妥善保管；如怀疑泄露，请及时删除并重新创建，
 
-### 第 1 步 · 安装插件
+### 2. 安装插件
 
 #### 方式 A · 插件市场（推荐）
 
 1. 打开 DSH，进入 **设置**。
 2. 找到 **插件 / 插件市场** 页面。
 3. 搜索 **Mojie**（或包名 `@mojieai/dsh-mojie-model-provider`）。
-4. 点 **安装**，等它自己装完。
+4. 点**安装**，等它提示「已安装，请重启 DSH 加载它」，再点**完成**。
+
+
+![image](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/dsh-1.png)
+
+![image](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/dsh-2.png)
 
 #### 方式 B · 一行命令
 
 打开终端（PowerShell / Terminal）：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/latest/download/mojieai-dsh-mojie-model-provider-0.1.0.tgz
+dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/latest/download/mojieai-dsh-mojie-model-provider-0.2.0.tgz
 ```
 
 > [!NOTE]
@@ -70,19 +93,17 @@ dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-pr
 - **Windows 桌面版**：右键托盘图标 → **退出**（只关窗口不算退出），再双击 `DeepSeek Harness` 重新打开。
 - **命令行版**：结束当前的 `dsh` 进程，重新启动。
 
-### 第 2 步 · 填 API Key（一次就好）
+### 3. 填入API Key（一次就好）
 
 1. 重启后进入 **设置 → 模型**。
-2. 找到 **Mojie provider 设置** 卡片（初始显示「尚未配置凭据」）。
-3. 在 **API Key** 输入框里粘贴第 0 步复制的 Key。
-4. 点 **保存 Mojie 设置**，看到「已保存。」即可，以后不用再填。
+2. 找到 **Mojie** provider 行；卡片会显示「API 密钥」。
+3. 在 **API 密钥** 输入框里粘贴第 1 步复制的 Key。
+4. 点卡片底部的 **保存**，看到「已保存。」即可，以后不用再填。
 
-> [!TIP]
-> 不想在界面里填也行：启动 DSH 前把 Key 放进环境变量 `MOJIE_API_KEY`，效果完全一样。具体写法见 [设置项](#设置项)。
 
-### 第 3 步 · 开始用
+### 4. 正确使用
 
-**聊天** —— 在 **设置 → 模型** 或聊天界面的模型下拉里，选一个 Mojie 提供的模型（例如 `claude-opus-5.5`、`gpt-6-astra`、`Kimi-k3.1-pro`），然后像平时一样发消息。它和原生模型一样支持：
+**对话界面** —— 在 **设置 → 模型** 或聊天界面的模型下拉里，选一个 Mojie 提供的模型（例如 `claude-opus-5.5`、`gpt-6-astra`、`Kimi-k3.1-pro`），然后像平时一样发消息。它和原生模型一样支持：
 
 - **工具调用**（读写文件、跑命令、搜索等）
 - **看图**（把图片拖进输入框，选一个支持图片的模型）
@@ -106,6 +127,7 @@ dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-pr
 | 想做什么 | 输入 |
 | :-- | :-- |
 | 画一张（用当前默认模型） | `/image 一只戴帽子的猫` |
+| 编辑 / 融合（附带图片） | 把图片拖进输入框，输入 `/image 把这两张图融合成一张` |
 | 本次换模型 | `/image 一只猫 --model mojie-nanobanana-2` |
 | 指定分辨率与比例 | `/image 赛博朋克风的城市夜景 --resolution 2K --ratio 16:9` |
 | 列出可用的画图模型 | `/image models` |
@@ -114,25 +136,31 @@ dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-pr
 | 续查没跑完的任务 | `/image task <任务ID>` |
 | 查看用法 | `/image help` |
 
+> 🖼 只要这次 `/image` 带着图片附件，命令就自动走**编辑**：附件按上传顺序作为 `input_image_urls` 提交给上游，不需要 `/image edit` 语法。`--model` / `--resolution` / `--ratio` 依然可叠加；`models`、`model`、`task`、`help` 这些子命令照常可用，附带的图片会被静默忽略（不会报错，也不影响你暂存的原图）。
+
 参数可以简写：`--model`/`-m`、`--resolution`/`-r`、`--ratio`/`--aspect-ratio`/`-a`，也支持 `--model=mojie-nanobanana-2` 这种等号写法。
 
 ### 任务没跑完怎么办
 
-图片生成是异步任务。等待超时时，命令会提示「任务 xxx 仍是 processing」，把这个 ID 交给 `/image task` 再查一次即可，**图不会丢**。
+图片生成是异步任务。`/image` 提交后**立即返回**（输入框的附件和发送记录会马上清空），图片在后台完成后自动放进对话；如果提交后进程退出、或想手动取回，用 `/image task <任务ID>` 续查即可，**图不会丢**。
 
-- 结果图会下载到本机附件目录，重启 DSH 后仍能在对话里看到。
-- 想要多张，就多敲几次 `/image`，每张都会单独发进对话。
+- 原图会写进当前会话的工作目录（文件名带任务 ID），重启 DSH 后对话里仍能看到图。
+- 想要多张，就多敲几次 `/image`，每张都会单独落一个文件、单独发进对话。
 
 ### 设置默认画图模型
 
-1. **设置 → 模型 → Mojie provider 设置**
+1. **设置 → 模型 → Mojie** 行，展开 **自定义设置**。
 2. 找到 **图片生成默认模型** 下拉框；列表为空就点右侧 **刷新图片模型**。
-3. 选一个（例如 `flux2-pro`、`mojie-image-2`），点 **保存 Mojie 设置**。
+3. 选一个（例如 `seedream-5-image`、`mojie-nanobanana-2`），点卡片底部的 **保存**。
 
 之后 `/image …` 和 AI 自己画图都会用这个模型。也可以随时用 `/image model <模型名>` 切换——两处改的是同一个设置。
 
-> [!NOTE]
-> 内置默认是 `seedream-5-image`，分辨率 `1K`、比例 `1:1`。想改默认分辨率与比例，见 [设置项](#设置项) 里的进阶字段。
+> [!IMPORTANT]
+> 对话里 AI 调用画图工具时，**只有你明确点名某个模型**它才会传 `model` 参数；没点名就省略，使用这里设置的默认模型。
+>
+>
+> 模型名可以模糊说（例如“用 image 2.5”）：AI 会先用 `mojie_list_image_models` 把模糊名解析成唯一的确切 id；如果有多个模型都匹配，它会先问你要哪一个。
+
 
 ### 让 AI 自己画 / 改图
 
@@ -141,18 +169,19 @@ dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-pr
 | 工具 | 用途 |
 | :-- | :-- |
 | `mojie_generate_image` | 文字生图，可指定模型、分辨率、比例 |
-| `mojie_edit_image` | 改图 / 重绘，输入图支持 URL、`data:` URL 或本地文件路径 |
+| `mojie_edit_image` | 改图 / 重绘 / 多图融合；所有参考图都放 `input_images` 数组（一张也传数组），按顺序提交 |
 | `mojie_list_image_models` | 列出当前 Key 可用的画图模型 |
 | `mojie_image_task` | 查询任务状态，完成后把图取回对话 |
 
 - **画**：直接说「帮我画一张……」即可，AI 会把图画进对话。
 - **改**：把图片拖进输入框，说「把这张图的背景换成沙滩」「改成蓝色电影色调」，AI 会把结果图发回来。
+- **多图融合**：一句话里给多张参考图（对话里贴多张，或让 AI 用 `input_images` 传多个路径），按你给的顺序提交。
+- **图在哪**：生成/编辑的原图按厂商字节直接写进**当前会话的工作目录**（`mojie-<任务ID>-<序号>.<扩展名>`，也会保存url在历史记录中，不覆盖、不压缩、Provider 返回几张就存几张）；对话里显示的压缩副本（由 DSH 附件存储按默认规则规范化，仅用于看），原图路径在「查看详情」里。
+
 
 ---
 
 ## 模型清单
-
-> 🧠 一个 Key，主流模型。上下文窗口、输出上限、图片输入能力由 `/v1/models` 实时发现，并以内置快照兜底。
 
 <details>
 <summary><b>OpenAI · GPT</b>（11）</summary>
@@ -218,37 +247,16 @@ dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-pr
 </details>
 
 > [!NOTE]
-> 清单会随主站更新。设置卡片里的 **刷新模型列表** 会把新模型合并进 `models`；也可以在 `models` 里手写条目，钉住你需要的模型和能力声明。内置快照见 [`src/catalog.generated.ts`](src/catalog.generated.ts)，可用 `pnpm sync:catalog` 刷新。
-
+> 清单会随主站更新。每个模型的 **上下文窗口、最大输出 token 数、输入类型、推理等级** 会一并自动填写。点 **获取可用模型** 可以搜索、勾选并 **更新列表**；
 ---
 
-## 设置项
-
-界面上的字段都在 **设置 → 模型 → Mojie provider 设置** 里：
-
-| 界面上的叫法 | 配置字段 | 默认值 |
-| :-- | :-- | :-- |
-| API Key | 凭据 `MOJIE_API_KEY` | 空（必填） |
-| 凭据引用 | `apiKeyEnv` | `MOJIE_API_KEY` |
-| Base URL | `baseURL` | `https://mojieaigc.com` |
-| 模型列表 | `models` | 空（自动发现 + 内置快照） |
-| 图片生成默认模型 | `imageDefaultModel` | `seedream-5-image` |
-
-Base URL 会自动填写 `https://mojieaigc.com`；
-带 `www.` 或带 `/v1` 后缀都能识别，多余的路径会被去掉。
-
-想用环境变量代替界面填 Key（PowerShell，设置后重开 DSH）：
-
-```powershell
-[Environment]::SetEnvironmentVariable('MOJIE_API_KEY','你的 Mojie API Key','User')
-```
 
 ## 常见问题
 
 <details>
-<summary><b>设置里模型列表是空的？</b></summary>
+<summary><b>设置里模型目录是空的？</b></summary>
 
-先确认 API Key 已保存（卡片上会显示「已配置凭据」），再点 **刷新模型列表**；画图模型则点 **刷新图片模型**。如果仍然为空，检查主站余额是否用完，或 Base URL 是否被改错。
+模型目录默认由内置快照自动填写，即使还没联网也能看到全部模型。要拿到主站最新清单，先确认 API Key 已保存（卡片上会显示「已配置凭据」），再展开 **自定义设置** 点 **获取可用模型**，勾选后点 **更新列表**；画图模型则点 **刷新图片模型**。如果仍然为空，检查主站余额是否用完，或 API 地址是否被改错。
 
 </details>
 
@@ -272,7 +280,7 @@ Key 复制错了或已失效。回主站「个人中心 → API-KEY」重新复�
 按顺序自查：
 
 1. 插件已安装，并且**重启过** DSH；
-2. 设置 → 模型里能看到「Mojie provider 设置」卡片；
+2. 设置 → 模型里能看到 **Mojie** 这一行（行内是 API 密钥 + 自定义设置）；
 3. 在输入框敲 `/`，菜单里能看到 **image**。
 
 </details>
@@ -293,7 +301,7 @@ Key 复制错了或已失效。回主站「个人中心 → API-KEY」重新复�
 dsh plugin --profile desktop remove "@mojieai/dsh-mojie-model-provider"
 ```
 
-然后重启 DSH。已生成的图片仍然保存在本机附件目录里，不会被删掉。
+然后重启 DSH。已生成的原图仍在各会话的工作目录里，不会被删掉。
 
 </details>
 
@@ -311,11 +319,10 @@ dsh plugin --profile desktop remove "@mojieai/dsh-mojie-model-provider"
 
 - **Key 只在本机**：保存在 DSH 的凭据存储里（或 `MOJIE_API_KEY` 环境变量），不写进插件配置，也不进入对话内容。
 - **请求直连主站**：聊天与画图请求直接发往 `mojieaigc.com`，不经过第三方中转。
-- **图片留在本地**：生成结果下载到本机附件目录，方便之后继续查看或二次编辑。
+- **图片留在本地**：生成的原图（与厂商字节一致）写进当前会话的工作目录，方便之后继续查看或二次编辑；对话显示副本存放在本机附件目录。
 - **别把 Key 贴出去**：不要贴进对话、截图或代码仓库；怀疑泄露时，去主站重置 Key 再改一遍设置。
 
 ---
 
-
-遇到问题或想提需求，欢迎到 [MojieAgentflow](https://www.mojieaigc.com) 留言，附上 DSH 版本、操作系统和报错原文会更好排查。账号、余额、Key 相关的问题，请找 Mojie 主站客服。
+遇到问题或想提需求，欢迎到 [MojieAgentflow](https://www.mojieaigc.com) 查看联系方式。
 

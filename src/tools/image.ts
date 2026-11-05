@@ -1,21 +1,25 @@
-import { readFile } from 'node:fs/promises'
-import { extname, isAbsolute, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { AttachmentId, type AttachmentStore, type ImageAttachmentRef, type ImageMediaType } from '@deepseek-ai/dsh-attachment'
+import type { AttachmentStore, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import type { ResolvedConfig } from '../config.js'
-import { sniffImageMediaType, type MojieMediaClient, type MojieMediaTask } from '../media/client.js'
+import { chooseImageModel } from '../media/model-memory.js'
+import { resolveInputImages } from '../media/input-image.js'
+import { renderTask, storeTask, type StoredTask } from '../media/task-store.js'
+import type { MojieMediaClient, MojieMediaTask } from '../media/client.js'
 
 /**
  * Native image tools registered on `ctx.tools`: text-to-image, image edit, the
  * image-model listing, and task lookup.
  *
- * They are ordinary first-party tools 鈥?always in the schema set, no skill load
- * required 鈥?and every generated picture is saved into the durable attachment
- * store, so the result renders in the conversation exactly like `read_image`.
+ * They are ordinary first-party tools — always in the schema set, no skill load
+ * required. Persistence is shared with the `/image` command through
+ * `media/task-store`: every image the provider returns is downloaded, the
+ * provider's exact bytes are written into the calling Session's working
+ * directory, a durable attachment is created as the display copy, and the
+ * provider URL is always reported. The visible conversation row lives in
+ * `src/client/toolview.js`.
  *
- * @module @mojieai/dsh-mojie-model-provider/tools/image
+ * @module @deepseek-ai/dsh-mojie-model-provider/tools/image
  */
 
 /** Host wiring the tools need. */
@@ -24,8 +28,10 @@ export interface MojieImageToolOptions {
   readonly config: () => ResolvedConfig
   /** Build a media client bound to the live configuration and credential. */
   readonly media: () => Promise<MojieMediaClient>
-  /** Durable attachment store; image results fall back to links when absent. */
+  /** Durable attachment store; its entry is the display copy. */
   readonly attachments: () => AttachmentStore | undefined
+  /** Resolve the calling Session's current working directory. */
+  readonly sessionDirectory: (agent: unknown, signal?: AbortSignal) => Promise<string>
 }
 
 const SUPPORTED_IMAGE_TYPES: readonly ImageMediaType[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
@@ -43,13 +49,18 @@ const SAVED_IMAGE_VALUE = {
   },
 }
 
-/** One generated image plus its optional stored copy. */
+/** One generated image: provider URL, saved original, and display copy. */
 const IMAGE_VALUE = {
   type: 'object' as const,
   additionalProperties: false,
   properties: {
     url: { type: 'string' as const, required: true as const },
     mime_type: { type: 'string' as const },
+    media_type: { type: 'string' as const, enum: SUPPORTED_IMAGE_TYPES },
+    bytes: { type: 'integer' as const },
+    width: { type: 'integer' as const },
+    height: { type: 'integer' as const },
+    path: { type: 'string' as const },
     saved: SAVED_IMAGE_VALUE,
   },
 }
@@ -75,32 +86,22 @@ const MODELS_VALUE = {
   },
 }
 
-/** Mirrors the canonical value shape above. */
-interface TaskValue {
-  task_id: string
-  model?: string
-  status: string
-  images?: Array<{
-    url: string
-    mime_type?: string
-    saved?: { attachment_id: string; media_type: ImageMediaType; bytes: number; width: number; height: number }
-  }>
-  note?: string
-}
+/** The persisted task value, shared with `/image`. */
+type TaskValue = StoredTask
 
 /**
  * Register the native Mojie image tools on the calling context's `ctx.tools`.
  *
- * Mount this inside `ctx.inject(['tools'], 鈥?` so the tools exist only where the
- * tool registry does; each execution re-reads the configuration and resolve the
- * credential, so settings edits apply without a restart.
+ * Mount this inside `ctx.inject(['tools'], …)` so the tools exist only where the
+ * tool registry does; each execution re-reads the configuration and resolves
+ * the credential, so settings edits apply without a restart.
  * @param ctx - context carrying the `tools` service.
- * @param options - configuration, media-client factory, and attachment store accessor.
+ * @param options - configuration, media-client factory, attachment store, and Session directory accessor.
  */
 export function registerImageTools(ctx: Context, options: MojieImageToolOptions): void {
   ctx.tools.register(defineTool({
     name: 'mojie_list_image_models',
-    description: 'List the Mojie image-generation models this key can call. Call this before choosing a model for mojie_generate_image or mojie_edit_image when the user names a style or the default model is unsupported.',
+    description: 'List the Mojie image-generation models this key can call. Call this only when the user asks for a specific image model or the default fails; a loose name (for example "image 2.5") must be resolved here to one exact id, and when several models match you must ask the user which one. When the user does not name a model, omit the `model` parameter on the image tools so the deployment default applies.',
     parameters: {},
     output: {
       schema: MODELS_VALUE,
@@ -120,7 +121,7 @@ export function registerImageTools(ctx: Context, options: MojieImageToolOptions)
 
   ctx.tools.register(defineTool({
     name: 'mojie_generate_image',
-    description: 'Generate an image from a text prompt with Mojie and return it as a picture in the conversation. Use this for any image creation, AI art, illustration, poster, icon, or style request. This is the native path: do not call the image-generation skill or shell out to scripts for image creation. The call waits for the task; if it is still running when the wait ends you get a task_id to poll with mojie_image_task.',
+    description: 'Generate an image from a text prompt with Mojie and return it as a picture in the conversation. Use this for any image creation, AI art, illustration, poster, icon, or style request. This is the native path: do not call the image-generation skill or shell out to scripts for image creation. Keep using the image model already chosen in this conversation unless the user explicitly asks for a different one. Every result reports the provider URL and the saved file path; tell the user the URL when the picture is ready, and read the saved file if you need the picture itself. The call waits for the task; if it is still running when the wait ends you get a task_id to poll with mojie_image_task.',
     parameters: {
       prompt: {
         type: 'string',
@@ -129,7 +130,7 @@ export function registerImageTools(ctx: Context, options: MojieImageToolOptions)
       },
       model: {
         type: 'string',
-        description: 'Image model id from mojie_list_image_models. Omit to use the configured default (seedream-5-image unless the deployment changed it).',
+        description: 'Only pass an image model id when the user explicitly names one; resolve a loose name through mojie_list_image_models to an exact id and ask the user when several models match. Otherwise omit this parameter: the deployment default is used and must not be guessed or copied from an example. Never switch models on your own — reuse the model already used earlier in this conversation unless the user explicitly changes it.',
       },
       resolution: {
         type: 'string',
@@ -142,38 +143,40 @@ export function registerImageTools(ctx: Context, options: MojieImageToolOptions)
     },
     output: {
       schema: TASK_VALUE,
-      render: (_args, value) => renderTask(value),
+      render: (_args, value) => renderTask(value as never),
+      presentationMeta: (_args, value) => taskMeta(value as never),
     },
     async execute(args, exec) {
       const config = options.config()
       const client = await options.media()
       const task = await client.generate({
-        model: args.model ?? config.imageDefaultModel,
+        model: chooseImageModel(exec.agent, args.model, config.imageDefaultModel),
         prompt: args.prompt,
         resolution: args.resolution ?? config.imageDefaultResolution,
         aspectRatio: args.aspect_ratio ?? config.imageDefaultAspectRatio,
       }, exec.signal)
-      return await taskValue(task, options, exec.signal)
+      return await storeTask(task, options, exec.agent, exec.signal)
     },
   }))
 
   ctx.tools.register(defineTool({
     name: 'mojie_edit_image',
-    description: 'Edit or restyle an existing image with Mojie and return the result as a picture in the conversation. Pass the reference image as an HTTPS URL, a data: URL, or a local file path. Use this for background changes, color grading, object removal or addition, restyling, or any image-to-image request. Native path for image editing: prefer it over shell scripts and image libraries.',
+    description: 'Edit, restyle, or fuse existing images with Mojie and return the result as pictures in the conversation. Pass every reference image in `input_images`, in the order the user gave them — a single reference is a one-element array: HTTPS URLs, data: URLs, or local file paths. Never use the `sha256:` attachment id, which names the normalized display copy rather than the picture the user received. When the user refers to images generated earlier in this Session, use the `file:` path each result reported (the untouched original), or its provider URL. When the user refers to an image they just uploaded in this message, pass the read-only file path shown in that image\'s handle text; that normalized copy is the only one the host kept for an upload. Keep using the image model already chosen in this conversation unless the user explicitly asks for a different one. Every result is saved into the current working directory and reports its provider URL and file path.',
     parameters: {
       prompt: {
         type: 'string',
         required: true,
-        description: 'How to change the reference image. Name exactly what changes and what must stay identical.',
+        description: 'How to change the reference images. Name exactly what changes and what must stay identical.',
       },
-      input_image: {
-        type: 'string',
+      input_images: {
+        type: 'array',
+        items: { type: 'string' },
         required: true,
-        description: 'Reference image: HTTPS URL, data: URL, or a local file path readable by the host process.',
+        description: 'Every reference image, in the user\'s order; one reference is a one-element array. Each item is an HTTPS URL, a data: URL, a local file path, the `file:` path a previous result reported, or the read-only path shown in a just-uploaded image\'s handle. A read-only handle path is read directly — do not copy it to a writable path first. The array itself must not be empty.',
       },
       model: {
         type: 'string',
-        description: 'Image model id from mojie_list_image_models. Omit for the configured default.',
+        description: 'Only pass an image model id when the user explicitly names one; resolve a loose name through mojie_list_image_models to an exact id and ask the user when several models match. Otherwise omit this parameter: the deployment default is used and must not be guessed or copied from an example. Never switch models on your own — reuse the model already used earlier in this conversation unless the user explicitly changes it.',
       },
       resolution: {
         type: 'string',
@@ -186,26 +189,33 @@ export function registerImageTools(ctx: Context, options: MojieImageToolOptions)
     },
     output: {
       schema: TASK_VALUE,
-      render: (_args, value) => renderTask(value),
+      render: (_args, value) => renderTask(value as never),
+      presentationMeta: (_args, value) => taskMeta(value as never),
     },
     async execute(args, exec) {
       const config = options.config()
       const client = await options.media()
-      const inputImage = await resolveInputImage(args.input_image, config.imageDownloadMaxBytes)
+      // References resolve relative to the Session directory, because that is
+      // where generated originals live.
+      const directory = await optionalSessionDirectory(options, exec)
+      if (args.input_images.length === 0) {
+        throw new Error('mojie_edit_image requires at least one reference image in input_images')
+      }
+      const inputImages = await resolveInputImages(args.input_images, directory)
       const task = await client.generate({
-        model: args.model ?? config.imageDefaultModel,
+        model: chooseImageModel(exec.agent, args.model, config.imageDefaultModel),
         prompt: args.prompt,
         resolution: args.resolution ?? config.imageDefaultResolution,
         aspectRatio: args.aspect_ratio ?? config.imageDefaultAspectRatio,
-        inputImage,
+        inputImages,
       }, exec.signal)
-      return await taskValue(task, options, exec.signal)
+      return await storeTask(task, options, exec.agent, exec.signal)
     },
   }))
 
   ctx.tools.register(defineTool({
     name: 'mojie_image_task',
-    description: 'Read the current state of a Mojie image task by its task_id, and attach the finished picture once it succeeds. Use it when mojie_generate_image or mojie_edit_image returned status processing instead of a completed image.',
+    description: 'Read the current state of a Mojie image task by its task_id, and attach every finished picture once it succeeds. Use it when mojie_generate_image or mojie_edit_image returned status processing instead of a completed image.',
     parameters: {
       task_id: {
         type: 'string',
@@ -215,7 +225,8 @@ export function registerImageTools(ctx: Context, options: MojieImageToolOptions)
     },
     output: {
       schema: TASK_VALUE,
-      render: (_args, value) => renderTask(value),
+      render: (_args, value) => renderTask(value as never),
+      presentationMeta: (_args, value) => taskMeta(value as never),
     },
     isConcurrencySafe: () => true,
     async execute(args, exec) {
@@ -229,120 +240,39 @@ export function registerImageTools(ctx: Context, options: MojieImageToolOptions)
           note: task.error ?? 'the provider reported a failure',
         }
       }
-      return await taskValue(task, options, exec.signal)
+      return await storeTask(task, options, exec.agent, exec.signal)
     },
   }))
 }
 
-/** Project one settled task into the canonical value, storing images when possible. */
-async function taskValue(task: MojieMediaTask, options: MojieImageToolOptions, signal?: AbortSignal): Promise<TaskValue> {
-  const attachments = options.attachments()
-  const value: TaskValue = {
-    task_id: task.id,
-    status: task.status,
-    ...task.model === undefined ? {} : { model: task.model },
-  }
-  if (task.images.length === 0) {
-    return task.status === 'succeeded'
-      ? { ...value, note: 'the provider reported success without an image' }
-      : { ...value, note: 'the task is still running; call mojie_image_task again later' }
-  }
-  const client = await options.media()
-  const images: NonNullable<TaskValue['images']> = []
-  for (const image of task.images) {
-    const entry: NonNullable<TaskValue['images']>[number] = {
-      url: image.url,
-      ...image.mimeType === undefined ? {} : { mime_type: image.mimeType },
-    }
-    if (attachments !== undefined) {
-      try {
-        const { data, mediaType } = await client.download(image, signal)
-        const ref = await attachments.saveImage({ data, mediaType, name: `mojie-${task.id}` })
-        entry.saved = {
-          attachment_id: ref.attachmentId,
-          media_type: ref.mediaType,
-          bytes: ref.bytes,
-          width: ref.width,
-          height: ref.height,
-        }
-      } catch (error) {
-        // A download or storage failure must not hide the URL the provider did produce.
-        value.note = `the image was generated but could not be stored locally (${errorMessage(error)}); the URL is usable`
-      }
-    }
-    images.push(entry)
-    if (images.length >= 4) break
-  }
-  return { ...value, images }
-}
-
-/** Render one task value as a short envelope plus the pictures themselves. */
-function renderTask(value: TaskValue): ContentBlock[] {
-  const lines = [`Mojie image task ${value.task_id}`, `status: ${value.status}`]
-  if (value.model !== undefined) lines.push(`model: ${value.model}`)
-  for (const [index, image] of (value.images ?? []).entries()) {
-    lines.push(image.saved === undefined
-      ? `${index + 1}. ![image](${image.url})`
-      : `${index + 1}. ${image.saved.media_type}, ${image.saved.width}x${image.saved.height}px, ${image.saved.bytes} bytes`)
-  }
-  if (value.note !== undefined) lines.push(value.note)
-  const blocks: ContentBlock[] = [{ type: 'text', text: lines.join('\n') }]
-  for (const image of value.images ?? []) {
-    if (image.saved === undefined) continue
-    blocks.push({ type: 'image', attachment: toImageRef(image.saved) })
-  }
-  return blocks
-}
-
-/** Rebuild the durable image reference a stored value describes. */
-function toImageRef(saved: NonNullable<NonNullable<TaskValue['images']>[number]['saved']>): ImageAttachmentRef {
+/** Presentation metadata the conversation row reads instead of parsing text. */
+function taskMeta(value: TaskValue) {
+  const files = (value.images ?? []).flatMap((image) => image.path === undefined ? [] : [{
+    path: image.path,
+    media_type: image.media_type ?? 'image/png',
+    bytes: image.bytes ?? 0,
+    ...image.width === undefined ? {} : { width: image.width },
+    ...image.height === undefined ? {} : { height: image.height },
+  }])
   return {
-    attachmentId: AttachmentId(saved.attachment_id),
-    mediaType: saved.media_type,
-    bytes: saved.bytes,
-    width: saved.width,
-    height: saved.height,
+    task_id: value.task_id,
+    status: value.status,
+    ...value.model === undefined ? {} : { model: value.model },
+    ...value.note === undefined ? {} : { note: value.note },
+    files,
+    urls: (value.images ?? []).map((image) => image.url),
   }
 }
 
-/**
- * Normalize the reference image argument: pass URLs through and inline a local
- * file as a data URL so the gateway can read it.
- */
-async function resolveInputImage(value: string, maxBytes: number): Promise<string> {
-  const trimmed = value.trim()
-  if (trimmed.length === 0) throw new Error('input_image must be a non-empty string')
-  if (/^https?:\/\//iu.test(trimmed) || trimmed.startsWith('data:')) return trimmed
-  const path = isAbsolute(trimmed) ? trimmed : resolve(process.cwd(), trimmed)
-  let data: Uint8Array
+/** Resolve the Session directory without failing a read-only operation. */
+async function optionalSessionDirectory(
+  options: MojieImageToolOptions,
+  exec: { signal?: AbortSignal; agent?: unknown },
+): Promise<string | undefined> {
   try {
-    data = new Uint8Array(await readFile(path))
-  } catch (cause) {
-    throw new Error(`cannot read input_image "${path}": ${errorMessage(cause)}`, { cause })
-  }
-  if (data.byteLength > maxBytes) {
-    throw new Error(`input_image is ${data.byteLength} bytes, over the ${maxBytes}-byte budget`)
-  }
-  const mediaType = sniffImageMediaType(data) ?? mediaTypeForExtension(path)
-  if (mediaType === undefined) {
-    throw new Error(`cannot use "${path}" as input_image: it is not a PNG/JPEG/WebP/GIF image`)
-  }
-  return `data:${mediaType};base64,${Buffer.from(data).toString('base64')}`
-}
-
-/** Declared media type from a file extension, when the bytes were not enough. */
-function mediaTypeForExtension(path: string): ImageMediaType | undefined {
-  switch (extname(path).toLowerCase()) {
-    case '.png': return 'image/png'
-    case '.jpg':
-    case '.jpeg': return 'image/jpeg'
-    case '.webp': return 'image/webp'
-    case '.gif': return 'image/gif'
-    default: return undefined
+    return await options.sessionDirectory(exec.agent, exec.signal)
+  } catch {
+    return undefined
   }
 }
 
-/** Best-effort one-line error text for envelopes. */
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}

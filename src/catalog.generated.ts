@@ -2,8 +2,8 @@
  * Mojie model catalog snapshot — GENERATED FILE, DO NOT EDIT BY HAND.
  *
  * Source: `GET https://mojieaigc.com/v1/models`
- * Fetched: 2026-10-26T09:46:12.169Z
- * Models: 65
+ * Fetched: 2026-11-05T09:42:22.730Z
+ * Models: 66
  *
  * Refresh with `pnpm sync:catalog` (scripts/sync-catalog.mjs). This snapshot keeps the
  * first request of a session correct before live discovery answers; the live listing
@@ -32,6 +32,7 @@ export const BUILTIN_CATALOG_MODELS: readonly MojieCatalogModel[] = [
   { id: 'qwen3.8-flash', name: 'qwen3.8-flash', inputModalities: ['text', 'image'] },
   { id: 'qwen3.8-max', name: 'qwen3.8-max', inputModalities: ['text', 'image'] },
   { id: 'qwen3.8-omni-flash', name: 'qwen3.8-omni-flash', inputModalities: ['text', 'image'] },
+  { id: 'gpt-6.1-terra', name: 'gpt-6.1-terra', inputModalities: ['text', 'image'] },
   { id: 'gpt-6-sol', name: 'gpt-6-sol', inputModalities: ['text', 'image'] },
   { id: 'gpt-6-luna', name: 'gpt-6-luna', inputModalities: ['text', 'image'] },
   { id: 'gpt-6.1-sol', name: 'gpt-6.1-sol', inputModalities: ['text', 'image'] },
@@ -56,7 +57,7 @@ export const BUILTIN_CATALOG_MODELS: readonly MojieCatalogModel[] = [
   { id: 'gemini-3.7-flash', name: 'gemini-3.7-flash', inputModalities: ['text', 'image'] },
   { id: 'gemini-3.8-flash', name: 'gemini-3.8-flash', inputModalities: ['text', 'image'] },
   { id: 'gemini-4-argon', name: 'gemini-4-argon', inputModalities: ['text', 'image'] },
-  { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro', inputModalities: ['text'] },
+  { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro', inputModalities: ['text', 'image'] },
   { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash', inputModalities: ['text'] },
   {
     id: 'claude-sonnet-4.5',
@@ -142,7 +143,7 @@ export const BUILTIN_CATALOG_MODELS: readonly MojieCatalogModel[] = [
   { id: 'doubao-seed-2-1-lite', name: 'doubao-seed-2-1-lite', inputModalities: ['text', 'image'] },
   { id: 'doubao-seed-2-0-lite', name: 'doubao-seed-2-0-lite', inputModalities: ['text', 'image'] },
   { id: 'doubao-seed-2-0-mini', name: 'doubao-seed-2-0-mini', inputModalities: ['text', 'image'] },
-  { id: 'doubao-seed-2-0-code-preview', name: 'doubao-seed-2-0-code-preview', inputModalities: ['text'] },
+  { id: 'doubao-seed-2-0-code-preview', name: 'doubao-seed-2-0-code-preview', inputModalities: ['text', 'image'] },
   { id: 'doubao-seed-character', name: 'doubao-seed-character', inputModalities: ['text', 'image'] },
   { id: 'doubao-seed-2-1-turbo', name: 'doubao-seed-2-1-turbo', inputModalities: ['text', 'image'] },
 ]
