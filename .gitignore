@@ -13,3 +13,7 @@ tests/
 devExplan.md
 # local scratch (proxy snapshot used while debugging network access)
 before.txt
+# generated images dropped at the repo root by manual/test runs
+/*.png
+# npm cache redirected into the repo for sandboxed publish runs
+.npm-cache/

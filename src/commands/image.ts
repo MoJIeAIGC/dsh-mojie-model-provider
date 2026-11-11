@@ -6,6 +6,7 @@ import { createUserMessage, type ContentBlock, type ImageBlock } from '@deepseek
 import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import { DEFAULT_IMAGE_MODEL, type ResolvedConfig } from '../config.js'
 import { chooseImageModel, rememberImageModel } from '../media/model-memory.js'
+import { advancedParameterSummary, IMAGE_PARAMETER_DOC_URL, type AdvancedImageParameters } from '../media/parameters.js'
 import { storeTask, taskText, toImageRef } from '../media/task-store.js'
 import { INPUT_CONCURRENCY, prepareImageBytes } from '../media/input-image.js'
 import type { MojieMediaClient, MojieMediaTask } from '../media/client.js'
@@ -75,6 +76,8 @@ type Parsed =
     readonly model?: string
     readonly resolution?: string
     readonly aspectRatio?: string
+    /** Model-specific extras parsed from the advanced flags. */
+    readonly advanced?: AdvancedImageParameters
   }
 
 /**
@@ -103,7 +106,7 @@ export function registerImageCommand(ctx: Context, options: ImageCommandOptions)
     // first-party only), so the pictogram rides the description line instead.
     description: '🖼 用 Mojie 生成或编辑图片（附带图片＝编辑；可直接指定模型；结果放进对话）',
     input: {
-      hint: '<描述> [--model <id>] [--resolution 1K] [--ratio 1:1]（附带图片即为编辑）| models | model [<id>] | task <id>',
+      hint: '<描述> [--model <id>] [--resolution 2K] [--ratio 1:1]（高级参数见 /image help；附带图片即为编辑）| models | model [<id>] | task <id>',
       attachments: true,
     },
     async handler({ agent, rawInput, signal, attachments }) {
@@ -156,12 +159,14 @@ export function registerImageCommand(ctx: Context, options: ImageCommandOptions)
         // record, so awaiting the whole media task would keep the attachment and
         // the sent line on screen for minutes. Create the task now, return at
         // once, and deliver the picture from the background.
+        const aspectRatio = parsed.aspectRatio ?? config.imageDefaultAspectRatio
         const created = await client.createTask({
           model,
           prompt,
           resolution: parsed.resolution ?? config.imageDefaultResolution,
-          aspectRatio: parsed.aspectRatio ?? config.imageDefaultAspectRatio,
+          ...aspectRatio.length === 0 ? {} : { aspectRatio },
           ...inputImages === undefined ? {} : { inputImages },
+          ...parsed.advanced ?? {},
         }, signal)
         const controller = new AbortController()
         ctx.effect(() => () => controller.abort())
@@ -240,6 +245,7 @@ function parseImageCommand(rawInput: string): Parsed {
   let model: string | undefined
   let resolution: string | undefined
   let aspectRatio: string | undefined
+  let advanced: AdvancedImageParameters = {}
   const promptParts: string[] = []
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index]!
@@ -254,6 +260,12 @@ function parseImageCommand(rawInput: string): Parsed {
       if (flag === '--model' || flag === '-m') model = value
       else if (flag === '--resolution' || flag === '-r') resolution = value
       else if (flag === '--ratio' || flag === '--aspect-ratio' || flag === '-a') aspectRatio = value
+      else if (flag === '--quality') advanced = { ...advanced, quality: value }
+      else if (flag === '--thinking-level') advanced = { ...advanced, thinkingLevel: value }
+      else if (flag === '--background') advanced = { ...advanced, background: value }
+      else if (flag === '--width') advanced = { ...advanced, width: Number(value) }
+      else if (flag === '--height') advanced = { ...advanced, height: Number(value) }
+      else if (flag === '--sequential') advanced = { ...advanced, sequentialImageGeneration: value }
       continue
     }
     promptParts.push(token)
@@ -264,37 +276,59 @@ function parseImageCommand(rawInput: string): Parsed {
     ...model === undefined ? {} : { model },
     ...resolution === undefined ? {} : { resolution },
     ...aspectRatio === undefined ? {} : { aspectRatio },
+    ...Object.keys(advanced).length === 0 ? {} : { advanced },
   }
 }
 
 /** Recognize one option flag, with or without `=value`. */
 function readFlag(token: string): string | undefined {
   const name = token.includes('=') ? token.slice(0, token.indexOf('=')) : token
-  return ['--model', '-m', '--resolution', '-r', '--ratio', '--aspect-ratio', '-a'].includes(name) ? name : undefined
+  return [
+    '--model', '-m',
+    '--resolution', '-r',
+    '--ratio', '--aspect-ratio', '-a',
+    '--quality',
+    '--thinking-level',
+    '--background',
+    '--width',
+    '--height',
+    '--sequential',
+  ].includes(name) ? name : undefined
 }
 
 /** Usage/help text for bare `/image`. */
 function usage(config: ResolvedConfig): string {
+  // An empty configured ratio means "no default": the provider picks it.
+  const aspectRatio = config.imageDefaultAspectRatio.trim()
   return [
     'Mojie 图片生成：',
     '  /image <描述>                       用当前默认模型生成',
     '  /image <描述> + 附带图片            编辑/融合：图片按上传顺序作为参考图提交',
     '  /image <描述> --model flux2-pro     本次换模型（--resolution 2K、--ratio 16:9 同理）',
+    '  /image <描述> --quality high        高级参数（模型特定，可组合）：',
+    '      --thinking-level <minimal|low|medium|high>   --quality <auto|low|medium|high|max>',
+    '      --background <auto|transparent|opaque>       --width <px> --height <px>',
+    '      --sequential <disabled|auto>',
+    '      每个高级参数只对文档列出的模型有效，传给其他模型会直接报错（不会白建任务）。',
+    `      参数与适用模型：${IMAGE_PARAMETER_DOC_URL}`,
     '  /image models                       列出可用模型',
-    '  /image model <id>                   切换默认模型（同时写入设置，等于设置页下拉）',
+    '  /image model <id>                   切换默认模型（同时写入设置，等于设置页输入框）',
     '  /image model auto                   恢复内置默认',
     '  /image task <task_id>               续查超时返回的 processing 任务',
     '',
-    `当前模型：${config.imageDefaultModel}｜分辨率 ${config.imageDefaultResolution}｜比例 ${config.imageDefaultAspectRatio}`,
-    '也可以在「设置 → 模型 → Mojie」里用下拉框选择默认图片模型。',
+    `当前模型：${config.imageDefaultModel}｜分辨率 ${config.imageDefaultResolution}｜比例 ${aspectRatio.length === 0 ? '不限制' : aspectRatio}`,
+    '也可以在「设置 → 模型 → Mojie」里用下拉建议或手动输入选择默认图片模型。',
   ].join('\n')
 }
 
-/** List models with the effective choice marked. */
+/** List models with the effective choice marked and their advanced parameters. */
 async function describeModels(options: ImageCommandOptions, current: string, signal: AbortSignal) {
   const models = await (await options.media()).listModels(signal)
   if (models.length === 0) return '这个 API key 当前没有可用的图片模型。'
-  const lines = models.map((model) => `${model === current ? '*' : ' '} ${model}`)
+  const lines = models.map((model) => {
+    const summary = advancedParameterSummary(model)
+    return `${model === current ? '*' : ' '} ${model}${summary.length === 0 ? '' : ` — ${summary}`}`
+  })
   return [`Mojie 图片模型（${models.length}，* 为当前默认）：`, ...lines, '', '切换：/image model <id>'].join('\n')
 }
 
@@ -332,7 +366,7 @@ async function chooseModel(
     kind: 'success',
     text: model === 'auto'
       ? `已恢复内置默认：${target}`
-      : `默认图片模型已切换为 ${target}（已写入设置；设置页下拉同步显示）`,
+      : `默认图片模型已切换为 ${target}（已写入设置；设置页输入框同步显示）`,
   } as const
 }
 

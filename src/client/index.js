@@ -63,6 +63,8 @@ const DEFAULT_REF = 'MOJIE_API_KEY'
 const DEFAULT_BASE_URL = 'https://mojieaigc.com'
 /** Host marker that answers this discovery with `/v1/media/models`. */
 const MEDIA_DISCOVERY_API = 'mojie-media-models'
+/** Datalist id the editable image-model field points at (one Mojie card per page). */
+const IMAGE_MODEL_LIST_ID = 'mojie-image-model-options'
 
 /** Cordis services this browser plugin needs before it applies. */
 export const inject = ['slots', 'configForms', 'remote', 'remote.credentials', 'remote.llm']
@@ -160,15 +162,17 @@ function apiKeyFailure(draft) {
 }
 
 /**
- * Union of the discovered image models and the currently configured one, so a
- * hand-written or retired id still renders as the selected option.
- * @param {string[]} discovered - model ids from `/v1/media/models`.
- * @param {string} current - configured `imageDefaultModel`.
- * @returns {string[]} option ids in display order.
+ * Suggestion ids for the editable image-model field.
+ *
+ * Only the live enabled list is offered. The field itself is free text, so a
+ * blacklisted or retired saved id stays in force without appearing in the
+ * suggestions, and a user can still type one deliberately.
+ * @param {string[]} discovered - enabled model ids from `/v1/media/models`.
+ * @returns {string[]} suggestion ids in display order.
  */
-function imageOptionValues(discovered, current) {
+function imageOptionValues(discovered) {
   const values = []
-  for (const id of [...discovered, current]) {
+  for (const id of discovered) {
     if (typeof id === 'string' && id.length > 0 && !values.includes(id)) values.push(id)
   }
   return values
@@ -787,7 +791,8 @@ function MojieProviderCard(props) {
     : `自动同步 /v1/models 与内置快照（${String(displayRows.length)} 个模型）；上下文窗口与推理等级自动填写`
 
   const statusIsSuccess = status !== undefined && (status.startsWith('已保存') || status.startsWith('已获取') || status.startsWith('已按') || status.startsWith('已恢复'))
-  const imageOptions = imageOptionValues(imageModels, imageModel)
+  const imageOptions = imageOptionValues(imageModels)
+  const currentImageModel = imageModel.trim()
 
   return h('div', { className: cls.editor }, [
     h('div', { key: 'key', className: cls.field }, [
@@ -952,19 +957,25 @@ function MojieProviderCard(props) {
         h('div', { key: 'image', className: cls.field }, [
           h('span', { key: 'label', className: cls.fieldLabel }, '图片生成默认模型'),
           h('div', { key: 'row', style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } }, [
-            h(SelectInput, {
-              key: 'select',
-              value: imageOptions.includes(imageModel) ? imageModel : '',
+            h(TextInput, {
+              key: 'input',
+              list: IMAGE_MODEL_LIST_ID,
+              value: imageModel,
+              placeholder: '留空使用部署默认',
+              autoComplete: 'off',
+              spellCheck: false,
               disabled: busy || imageLoading,
               style: { flex: '1 1 220px', minWidth: 200, maxWidth: 'none' },
+              'aria-label': '图片生成默认模型',
               onChange: (event) => {
                 setImageModel(event.target.value)
                 markDirty()
               },
-            }, [
-              h('option', { key: 'placeholder', value: '' }, '（使用部署默认）'),
-              ...imageOptions.map((id) => h('option', { key: id, value: id }, id)),
-            ]),
+            }),
+            // Suggestions only: the input stays free text, so a blacklisted
+            // model is absent from the dropdown but can still be typed.
+            h('datalist', { key: 'options', id: IMAGE_MODEL_LIST_ID },
+              imageOptions.map((id) => h('option', { key: id, value: id }))),
             h(LinkButton, {
               key: 'refresh',
               disabled: busy || imageLoading,
@@ -972,9 +983,9 @@ function MojieProviderCard(props) {
             }, imageLoading ? '获取中…' : '刷新图片模型'),
           ]),
           h('span', { key: 'hint', className: cls.hint },
-            `已选：${imageModel === '' ? '部署默认' : imageModel}；应用于 /image 与 mojie_generate_image，保存后生效。`),
+            `已选：${currentImageModel === '' ? '部署默认' : currentImageModel}；可下拉选择或手动输入模型 id，保存后生效。`),
           imageModels.length === 0
-            ? h('span', { key: 'empty', className: cls.hint }, '还没有取到图片模型列表，点「刷新图片模型」获取。')
+            ? h('span', { key: 'empty', className: cls.hint }, '还没有取到图片模型列表；仍可手动输入模型 id，或点「刷新图片模型」获取建议。')
             : null,
         ]),
       ]),

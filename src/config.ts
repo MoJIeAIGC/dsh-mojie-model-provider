@@ -83,9 +83,29 @@ export interface Config {
   imageTools: Volatile<boolean>
   /** Default image model when a call omits one. */
   imageDefaultModel: Volatile<string>
-  /** Default image resolution when a call omits one (provider vocabulary, e.g. `1K`). */
+  /**
+   * Image model ids hidden from every image-model list and picker.
+   *
+   * This is a deployment-level blacklist, deliberately not rendered by the
+   * Models card. `listModels()` reads it live, so a profile-patch edit (HMR
+   * reloads the profile) or a settings write applies to the next listing
+   * without remounting the plugin. It hides models from selection; it does not
+   * turn an explicitly requested id into an error.
+   *
+   * Defaults to {@link DEFAULT_IMAGE_MODEL_BLOCKLIST}; an explicit value
+   * replaces that list (including an empty list, which disables the default).
+   */
+  imageModelBlocklist: Volatile<string[]>
+  /**
+   * Default image resolution when a call omits one (provider vocabulary, e.g. `2K`).
+   */
   imageDefaultResolution: Volatile<string>
-  /** Default aspect ratio when a call omits one (e.g. `1:1`). */
+  /**
+   * Default aspect ratio when a call omits one.
+   *
+   * Empty means "no default": the request omits `aspect_ratio` and the provider
+   * chooses the ratio from the prompt (and, for edits, the reference image).
+   */
   imageDefaultAspectRatio: Volatile<string>
   /** Delay between `/v1/media/tasks/{id}` polls. */
   imagePollIntervalMs: Volatile<number>
@@ -99,7 +119,32 @@ export type Options = {
 }
 
 /** Built-in image model used when the deployment configures none. */
-export const DEFAULT_IMAGE_MODEL = 'seedream-5-image'
+export const DEFAULT_IMAGE_MODEL = 'mojie-nanobanana-2'
+
+/** Built-in image resolution used when the deployment configures none. */
+export const DEFAULT_IMAGE_RESOLUTION = '2K'
+
+/**
+ * Built-in aspect ratio used when the deployment configures none.
+ *
+ * Empty is deliberate: there is no default ratio, so the provider decides.
+ */
+export const DEFAULT_IMAGE_ASPECT_RATIO = ''
+
+/**
+ * Image models hidden when a deployment does not configure its own blacklist.
+ *
+ * These are older image generations the site still lists but that should not be
+ * picked by default. An explicit `imageModelBlocklist` replaces this list
+ * wholesale, so a deployment can add to it or allow one of these again.
+ */
+export const DEFAULT_IMAGE_MODEL_BLOCKLIST: readonly string[] = [
+  'flux2-pro',
+  'mojie-Nanobanana-1',
+  'mojie-image-2',
+  'flux2-flex',
+  'flux2-max',
+]
 
 /** Fully defaulted plain configuration used by one request operation. */
 export interface ResolvedConfig {
@@ -115,6 +160,7 @@ export interface ResolvedConfig {
   requestImageMaxBytes: number
   imageTools: boolean
   imageDefaultModel: string
+  imageModelBlocklist: string[]
   imageDefaultResolution: string
   imageDefaultAspectRatio: string
   imagePollIntervalMs: number
@@ -180,8 +226,18 @@ export const Config = z.object({
   // a durable store exists so the picture renders like a native one.
   imageTools: z.boolean().default(true).volatile(),
   imageDefaultModel: z.string().default(DEFAULT_IMAGE_MODEL).volatile(),
-  imageDefaultResolution: z.string().default('1K').volatile(),
-  imageDefaultAspectRatio: z.string().default('1:1').volatile(),
+  // Image models hidden from every picker. Intentionally absent from the
+  // Models card: the operator edits this in the profile patch (HMR reloads it)
+  // or writes it through the settings service. Matching is case-insensitive.
+  // The shipped default hides older image generations; an explicit list
+  // replaces it, and `[]` opts out of the default.
+  imageModelBlocklist: z.array(z.string()).default([...DEFAULT_IMAGE_MODEL_BLOCKLIST]).volatile(),
+  // The default resolution follows the tool descriptions, which tell the model
+  // to ask for 2K; an omitted flag therefore stays on the same tier.
+  imageDefaultResolution: z.string().default(DEFAULT_IMAGE_RESOLUTION).volatile(),
+  // Empty = no default ratio: `aspect_ratio` is omitted from the request and the
+  // provider picks it from the prompt (and the reference image for edits).
+  imageDefaultAspectRatio: z.string().default(DEFAULT_IMAGE_ASPECT_RATIO).volatile(),
   imagePollIntervalMs: z.number().min(100).default(3_000).volatile(),
   imageTaskTimeoutMs: z.number().min(1_000).default(600_000).volatile(),
 })
@@ -204,9 +260,33 @@ export function normalizeConfig(config: ResolvedConfig): ResolvedConfig {
     apiKeyEnv,
     models,
     imageDefaultModel,
+    // Store the canonical form so every listing compares the same way; the
+    // Models card never renders this field, so the exact spelling is irrelevant.
+    imageModelBlocklist: normalizeImageModelBlocklist(config.imageModelBlocklist ?? DEFAULT_IMAGE_MODEL_BLOCKLIST),
     imageDefaultResolution: config.imageDefaultResolution.trim(),
     imageDefaultAspectRatio: config.imageDefaultAspectRatio.trim(),
   }
+}
+
+/**
+ * Normalize the hidden image-model blacklist.
+ *
+ * One id per entry, trimmed and lowercased so a user can paste ids without
+ * matching the site's mixed casing exactly. Blank entries are dropped and
+ * duplicates collapse, which keeps `listModels()` filtering a plain Set.
+ * @param ids - raw configured ids.
+ * @returns canonical blacklist ids in first-seen order.
+ */
+function normalizeImageModelBlocklist(ids: readonly string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const id of ids) {
+    const value = id.trim().toLowerCase()
+    if (value.length === 0 || seen.has(value)) continue
+    seen.add(value)
+    result.push(value)
+  }
+  return result
 }
 
 /**

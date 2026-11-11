@@ -58,15 +58,18 @@ export type { ReasoningRung, VendorReasoningProfile } from './reasoning.js'
  * tests) without the tool registry. The registrars exist for embedders that
  * mount the capability under their own services.
  */
-export { MojieMediaClient, MEDIA_MODELS_DISCOVERY_API, sniffImageMediaType } from './media/client.js'
+export {
+  MojieMediaClient, MEDIA_MODELS_DISCOVERY_API, isImageMediaModel, sniffImageMediaType,
+} from './media/client.js'
 export type {
-  MojieMediaClientOptions, MojieMediaImage, MojieMediaRequest, MojieMediaTask,
+  MojieMediaClientOptions, MojieMediaImage, MojieMediaModel, MojieMediaOutputModality, MojieMediaRequest,
+  MojieMediaTask,
 } from './media/client.js'
 export { registerImageTools } from './tools/image.js'
 export type { MojieImageToolOptions } from './tools/image.js'
 export { IMAGE_COMMAND_NAME, registerImageCommand } from './commands/image.js'
 export type { ImageCommandOptions } from './commands/image.js'
-export { DEFAULT_IMAGE_MODEL } from './config.js'
+export { DEFAULT_IMAGE_MODEL, DEFAULT_IMAGE_MODEL_BLOCKLIST } from './config.js'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -156,6 +159,11 @@ export function createAdapter(config: PluginConfig, ctx: Context): LlmAdapter {
  */
 export function apply(ctx: Context, config: PluginConfig): void {
   const initial = plainOptions(config)
+  const readConfig = (): ResolvedConfig => normalizeConfig(plainOptions(config))
+  // The blacklist is read through the live Config on every listing, so a
+  // profile-patch edit (which HMR reloads) or a settings write applies without
+  // remounting the plugin.
+  const blockedImageModels = (): readonly string[] => readConfig().imageModelBlocklist
   // The settings namespace is the profile entry id. The bundle patch pins
   // `id: mojie`; a hand-written mount must do the same for the Models card and
   // settings writes to address the running entry.
@@ -173,7 +181,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
   // The service registers itself on this context, so its lifetime is this
   // plugin's fiber and it disappears when the plugin unloads.
   new MojieService(ctx, {
-    config: () => normalizeConfig(plainOptions(config)),
+    config: readConfig,
     resolveApiKey: (ref) => resolveCredential(ctx, ref),
     provider: PROVIDER_ROUTES[0]!,
   })
@@ -185,12 +193,16 @@ export function apply(ctx: Context, config: PluginConfig): void {
     defaultBaseURL: initial.baseURL,
   }])
   ctx.llm.registerModelDiscovery(SETTINGS_NS, async (request, signal) => {
-    const current = normalizeConfig(plainOptions(config))
+    const current = readConfig()
     const apiKey = request.apiKey ?? await resolveCredential(ctx, current.apiKeyEnv)
     // The Settings card reuses this one discovery surface for its image-model
     // dropdown: the marker selects `/v1/media/models` instead of chat models.
     if (request.api === MEDIA_MODELS_DISCOVERY_API) {
-      const media = new MojieMediaClient({ baseURL: request.baseURL ?? current.baseURL, apiKey })
+      const media = new MojieMediaClient({
+        baseURL: request.baseURL ?? current.baseURL,
+        apiKey,
+        blockedImageModels,
+      })
       return (await media.listModels(signal)).map((id) => ({ id }))
     }
     return discoverDraftModels(current, { ...request, apiKey }, signal)
@@ -201,7 +213,6 @@ export function apply(ctx: Context, config: PluginConfig): void {
   // provider route keeps working in compositions without a tool registry, a
   // command registry, or a skill registry, and each one disappears with the
   // plugin's fiber.
-  const readConfig = (): ResolvedConfig => normalizeConfig(plainOptions(config))
   const media = async (): Promise<MojieMediaClient> => {
     const current = readConfig()
     return new MojieMediaClient({
@@ -209,6 +220,7 @@ export function apply(ctx: Context, config: PluginConfig): void {
       apiKey: await resolveCredential(ctx, current.apiKeyEnv),
       pollIntervalMs: current.imagePollIntervalMs,
       taskTimeoutMs: current.imageTaskTimeoutMs,
+      blockedImageModels,
     })
   }
   if (initial.imageTools) {

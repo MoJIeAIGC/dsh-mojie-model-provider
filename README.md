@@ -80,11 +80,8 @@ dsh --version
 打开终端（PowerShell / Terminal）：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/latest/download/mojieai-dsh-mojie-model-provider-0.2.0.tgz
+dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/latest/download/mojieai-dsh-mojie-model-provider-0.2.2.tgz
 ```
-
-> [!NOTE]
-> URL 里的版本号要和发布页上的文件名一致。如果提示 404，请到 [Releases](https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases) 页面复制最新的 `.tgz` 链接替换。
 
 #### 装完必须重启一次
 
@@ -108,19 +105,19 @@ dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-pr
 - **工具调用**（读写文件、跑命令、搜索等）
 - **看图**（把图片拖进输入框，选一个支持图片的模型）
 
-**画图** —— 在输入框里敲：
+**图片生成** —— 可以直接在对话框中输入：
 
 ```text
 /image 一只戴帽子的猫，扁平插画风，白底
 ```
 
-几秒到几十秒后，图片会直接出现在对话里，并附上模型名与尺寸。
+图片生成好后，会直接出现在对话里，并附上模型名与尺寸。
 
 ---
 
-## 画图手册
+## 直接使用图片生成
 
-> 🎨 `/image` 是给人用的画图入口：提示词原样发给画图模型，不经过聊天模型改写，也不靠模型猜测要调哪个工具。
+> 🎨 `/image` 可以命令直接使用图片工具而不经过大模型思考：提示词原样发给图片生成模型。
 
 ### 常用写法
 
@@ -130,27 +127,37 @@ dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-pr
 | 编辑 / 融合（附带图片） | 把图片拖进输入框，输入 `/image 把这两张图融合成一张` |
 | 本次换模型 | `/image 一只猫 --model mojie-nanobanana-2` |
 | 指定分辨率与比例 | `/image 赛博朋克风的城市夜景 --resolution 2K --ratio 16:9` |
-| 列出可用的画图模型 | `/image models` |
+| 高级参数（模型特定） | `/image 产品主图 --quality max --background transparent` |
+| 列出可用的画图模型 | `/image models`（每个模型会标注支持哪些高级参数） |
 | 切换默认模型 | `/image model mojie-nanobanana-2` |
 | 恢复内置默认 | `/image model auto` |
 | 续查没跑完的任务 | `/image task <任务ID>` |
 | 查看用法 | `/image help` |
 
-> 🖼 只要这次 `/image` 带着图片附件，命令就自动走**编辑**：附件按上传顺序作为 `input_image_urls` 提交给上游，不需要 `/image edit` 语法。`--model` / `--resolution` / `--ratio` 依然可叠加；`models`、`model`、`task`、`help` 这些子命令照常可用，附带的图片会被静默忽略（不会报错，也不影响你暂存的原图）。
 
 参数可以简写：`--model`/`-m`、`--resolution`/`-r`、`--ratio`/`--aspect-ratio`/`-a`，也支持 `--model=mojie-nanobanana-2` 这种等号写法。
 
-### 任务没跑完怎么办
+### 高级穿透参数（模型特定）
 
-图片生成是异步任务。`/image` 提交后**立即返回**（输入框的附件和发送记录会马上清空），图片在后台完成后自动放进对话；如果提交后进程退出、或想手动取回，用 `/image task <任务ID>` 续查即可，**图不会丢**。
+厂商文档的「高级穿透参数」已经打通，命令行与工具都支持；这些参数**只对文档列出的模型有效**，传给别的模型会直接报错（在本地拦下，不会白建一个注定失败的任务）：
 
-- 原图会写进当前会话的工作目录（文件名带任务 ID），重启 DSH 后对话里仍能看到图。
-- 想要多张，就多敲几次 `/image`，每张都会单独落一个文件、单独发进对话。
+| 参数 | 适用模型 | 可选值 | `/image` 开关 |
+| :-- | :-- | :-- | :-- |
+| `thinking_level` | `Mojie-Nanobanana-2` / `Mojie-Nanobanana-pro` | `minimal` / `low` / `medium` / `high` | `--thinking-level` |
+| `quality` | `Mojie-image-2`（4 档）/ `mojie-image-2-5-sunburst` / `mojie-image-2-5-flare`（多一档 `max`） | `auto` / `low` / `medium` / `high` / `max` | `--quality` |
+| `background` | `mojie-image-2-5-sunburst` / `mojie-image-2-5-flare` | `auto` / `transparent` / `opaque` | `--background` |
+| `width` / `height` | `flux-2-pro` / `seedream-5-image` / `Qwen-image-3.0` | 16–8192 的整数像素 | `--width` / `--height` |
+| `sequential_image_generation` | `seedream-5-image` | `disabled` / `auto` | `--sequential` |
+
+> [!IMPORTANT]
+> 模型清单与取值以厂商文档为准：<https://www.mojieaigc.com/docs/84c92eb8-f0c1-4e66-935f-96d3a73715c6>（文档里的 `flux-2-pro` / `Qwen-image-3.0` 在实际接口里是 `flux2-pro` / `qwen-image-3`，插件两种写法都认）。
+>
+> 不确定某个模型支持哪些高级参数时，先运行 `/image models` 或让 AI 调用 `mojie_list_image_models`——输出会逐个模型标注它支持的高级参数与取值。
 
 ### 设置默认画图模型
 
 1. **设置 → 模型 → Mojie** 行，展开 **自定义设置**。
-2. 找到 **图片生成默认模型** 下拉框；列表为空就点右侧 **刷新图片模型**。
+2. 找到 **图片生成默认模型** 输入框（可下拉选择，也可手动输入模型 id）；列表为空就点右侧 **刷新图片模型**。
 3. 选一个（例如 `seedream-5-image`、`mojie-nanobanana-2`），点卡片底部的 **保存**。
 
 之后 `/image …` 和 AI 自己画图都会用这个模型。也可以随时用 `/image model <模型名>` 切换——两处改的是同一个设置。
@@ -162,15 +169,15 @@ dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-pr
 > 模型名可以模糊说（例如“用 image 2.5”）：AI 会先用 `mojie_list_image_models` 把模糊名解析成唯一的确切 id；如果有多个模型都匹配，它会先问你要哪一个。
 
 
-### 让 AI 自己画 / 改图
+### 图片生成工具调用
 
 插件注册了 4 个原生工具，AI 会在需要时自己调用：
 
 | 工具 | 用途 |
 | :-- | :-- |
-| `mojie_generate_image` | 文字生图，可指定模型、分辨率、比例 |
-| `mojie_edit_image` | 改图 / 重绘 / 多图融合；所有参考图都放 `input_images` 数组（一张也传数组），按顺序提交 |
-| `mojie_list_image_models` | 列出当前 Key 可用的画图模型 |
+| `mojie_generate_image` | 文字生图，可指定模型、分辨率、比例，以及模型特定的高级穿透参数 |
+| `mojie_edit_image` | 改图 / 重绘 / 多图融合；所有参考图都放 `input_images` 数组（一张也传数组），按顺序提交；同样接受高级穿透参数 |
+| `mojie_list_image_models` | 列出当前 Key 可用的画图模型，并标注每个模型支持哪些高级参数 |
 | `mojie_image_task` | 查询任务状态，完成后把图取回对话 |
 
 - **画**：直接说「帮我画一张……」即可，AI 会把图画进对话。

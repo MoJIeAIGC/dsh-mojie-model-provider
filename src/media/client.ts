@@ -2,6 +2,7 @@ import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { normalizeBaseURL } from '../core/endpoint.js'
 import { providerError } from '../transport.js'
+import { advancedParameterPayload, assertAdvancedParameters, type AdvancedImageParameters } from './parameters.js'
 
 /**
  * Mojie `/v1/media` client: text-to-image and image-edit tasks plus the model
@@ -33,8 +34,13 @@ export interface MojieMediaTask {
   readonly error?: string
 }
 
-/** Request body for one media task creation. */
-export interface MojieMediaRequest {
+/**
+ * Request body for one media task creation.
+ *
+ * Inherits the model-specific advanced parameters, which {@link MojieMediaClient.createTask}
+ * validates against the target model before anything is sent.
+ */
+export interface MojieMediaRequest extends AdvancedImageParameters {
   /** Image model id from {@link MojieMediaClient.listModels}. */
   readonly model: string
   /** What to draw (or how to change `input_image`). */
@@ -63,12 +69,53 @@ export interface MojieMediaClientOptions {
   readonly pollIntervalMs?: number
   /** Inline wait before returning the pending task id; defaults to 10 minutes. */
   readonly taskTimeoutMs?: number
+  /**
+   * Live image-model blacklist provider.
+   *
+   * `listModels()` consults it on every call, so a configuration edit applies
+   * to the next listing without reconstructing the client. Blacklisted models
+   * are hidden from pickers; an explicitly requested id is still accepted,
+   * because this is a selection policy rather than an authorization boundary.
+   */
+  readonly blockedImageModels?: () => readonly string[]
   /** Fetch implementation, injectable for tests. */
   readonly fetch?: typeof fetch
 }
 
 /** Marker the Settings card sends through model discovery to request image models. */
 export const MEDIA_MODELS_DISCOVERY_API = 'mojie-media-models'
+
+/** What a media model produces, as `GET /v1/media/models` declares it. */
+export type MojieMediaOutputModality = 'image' | 'video'
+
+/**
+ * One row of `GET /v1/media/models`.
+ *
+ * The endpoint used to answer with bare id strings. It now answers with model
+ * objects whose `architecture.output_modalities` distinguishes image models
+ * from video models; both share the same listing and the same task endpoint,
+ * so a caller that can only render images has to select by output kind.
+ *
+ * `outputModalities` is absent when a row declares nothing (legacy string rows,
+ * or an older deployment of the endpoint). Such a row keeps the endpoint's
+ * pre-classification meaning, which only served image models.
+ */
+export interface MojieMediaModel {
+  readonly id: string
+  /** Listing display name, when it differs from `id`. */
+  readonly name?: string
+  /** Declared output kinds; absent when the row did not declare any. */
+  readonly outputModalities?: readonly MojieMediaOutputModality[]
+}
+
+/**
+ * True when a media model can answer an image request.
+ * @param model - normalized listing row.
+ * @returns whether the model may be used for image generation or editing.
+ */
+export function isImageMediaModel(model: MojieMediaModel): boolean {
+  return model.outputModalities === undefined || model.outputModalities.includes('image')
+}
 
 const SUPPORTED_IMAGE_TYPES: readonly ImageMediaType[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 
@@ -100,24 +147,61 @@ export class MojieMediaClient {
   }
 
   /**
-   * List the image models this key may call.
+   * List every media model this key may call, with its declared output kinds.
+   *
+   * Both shapes the endpoint has shipped are accepted: the current model
+   * objects (with `architecture.output_modalities`) and the legacy bare id
+   * strings. Duplicate ids collapse to their first row.
    * @param signal - optional cancellation.
-   * @returns model ids in endpoint order.
+   * @returns normalized model rows in endpoint order.
    */
-  async listModels(signal?: AbortSignal): Promise<string[]> {
+  async listMediaModels(signal?: AbortSignal): Promise<MojieMediaModel[]> {
     const body = await this.request('GET', this.modelsEndpoint, undefined, signal)
     const data = isRecord(body) ? body.data ?? body : undefined
     if (!Array.isArray(data)) throw new LlmError('Mojie /v1/media/models has no data array', 'MALFORMED_RESPONSE')
-    return data.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    const models: MojieMediaModel[] = []
+    const seen = new Set<string>()
+    for (const row of data) {
+      const model = normalizeMediaModel(row)
+      if (model === undefined || seen.has(model.id)) continue
+      seen.add(model.id)
+      models.push(model)
+    }
+    return models
+  }
+
+  /**
+   * List the image models this key may call.
+   *
+   * Image and video models share one listing, so video-only rows are filtered
+   * out here. The live blacklist is applied on top: every image tool and the
+   * Settings dropdown would otherwise offer a model the deployment hid.
+   * @param signal - optional cancellation.
+   * @returns image model ids in endpoint order.
+   */
+  async listModels(signal?: AbortSignal): Promise<string[]> {
+    const blocked = new Set(
+      (this.options.blockedImageModels?.() ?? []).map((id) => id.trim().toLowerCase()),
+    )
+    return (await this.listMediaModels(signal))
+      .filter(isImageMediaModel)
+      .map((model) => model.id)
+      .filter((id) => !blocked.has(id.toLowerCase()))
   }
 
   /**
    * Create one media task (no polling).
+   *
+   * Advanced parameters are checked against the resolved model first: the
+   * gateway accepts an unsupported combination and only fails later, so a wrong
+   * pairing is rejected here while no task exists.
    * @param request - model, prompt, and provider options.
    * @param signal - optional cancellation.
    * @returns the created task id and its initial status.
+   * @throws {Error} when an advanced parameter does not belong to this model.
    */
   async createTask(request: MojieMediaRequest, signal?: AbortSignal): Promise<{ id: string; model?: string; status: string }> {
+    assertAdvancedParameters(request.model, request)
     const payload = {
       model: request.model,
       prompt: request.prompt,
@@ -126,6 +210,7 @@ export class MojieMediaClient {
       ...request.inputImages === undefined || request.inputImages.length === 0
         ? {}
         : { input_image_urls: [...request.inputImages] },
+      ...advancedParameterPayload(request),
       ...request.extra ?? {},
     }
     const body = await this.request('POST', this.tasksEndpoint, payload, signal)
@@ -240,6 +325,39 @@ export class MojieMediaClient {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Normalize one `/v1/media/models` row.
+ *
+ * The current listing sends `{ id, name, architecture: { output_modalities } }`;
+ * the legacy listing sent a bare id string and is still accepted so a pinned
+ * gateway keeps working.
+ */
+function normalizeMediaModel(row: unknown): MojieMediaModel | undefined {
+  if (typeof row === 'string') return row.length === 0 ? undefined : { id: row }
+  if (!isRecord(row)) return undefined
+  const id = typeof row.id === 'string' && row.id.length > 0 ? row.id : undefined
+  if (id === undefined) return undefined
+  const name = typeof row.name === 'string' && row.name.length > 0 && row.name !== id ? row.name : undefined
+  const outputs = readOutputModalities(row)
+  return {
+    id,
+    ...name === undefined ? {} : { name },
+    ...outputs === undefined ? {} : { outputModalities: outputs },
+  }
+}
+
+/** Read `architecture.output_modalities`, falling back to a top-level field. */
+function readOutputModalities(row: Record<string, unknown>): MojieMediaOutputModality[] | undefined {
+  const architecture = isRecord(row.architecture) ? row.architecture : undefined
+  const raw = architecture?.output_modalities ?? row.output_modalities
+  if (!Array.isArray(raw)) return undefined
+  const known = raw.filter(
+    (entry): entry is MojieMediaOutputModality => entry === 'image' || entry === 'video',
+  )
+  if (known.length === 0) return undefined
+  return [...new Set(known)]
 }
 
 /** Normalize one task payload into its provider-independent view. */
