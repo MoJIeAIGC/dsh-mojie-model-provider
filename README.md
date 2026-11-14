@@ -11,7 +11,7 @@
   <a href="https://www.douyin.com/user/MS4wLjABAAAA3JbjlCqKd8WXklSYmO64wxWeMBg4efViyTg8Gz6VZdI">抖音</a>
 </p>
 
-由MojieAI开发的deepseek-harness插件，用于将Mojieaigc.com的所有平台能力无缝接入到DSH中，无需多余配置，直接让你的DSH拥有原生多模型，生图生视频能力。
+由 MojieAI 开发的 deepseek-harness 插件：把 Mojie（mojieaigc.com）的模型接入 DSH，填入 API Key 后 GPT / Claude / Gemini / Qwen / 豆包 / Kimi / Grok / GLM 等模型直接出现在模型下拉里，并提供原生生图（图片生成与编辑）能力。
 
 | 用一个 Key，聊全球主流模型 | 一句话，让 AI 出图 | 像原生模型一样用 |
 | :-- | :-- | :-- |
@@ -45,17 +45,17 @@ dsh --version
 3. 进入 **我的APIKEY**；
 4. 点击**新建密钥**，给 Key 起个名字（例如 `codex`），复制生成的那串。
 
-![头像菜单里的「我的APIKEY」入口](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/apikey1.png)
+![头像菜单里的「我的APIKEY」入口](assets/screenshots/apikey-menu.png)
 
 进入后是 APIKEY 管理页，点右上角 **新建密钥**：
 
-![APIKEY 管理页，右上角新建密钥](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/apikey2.png)
+![APIKEY 管理页，右上角新建密钥](assets/screenshots/apikey-list.png)
 
-![新建 API Key 弹窗](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/create_apikey.png)
+![新建 API Key 弹窗](assets/screenshots/apikey-create.png)
 
 创建后回到列表，点 Key 后面的复制图标把它复制走：
 
-![点复制图标复制 Key](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/copy_apikey.png)
+![点复制图标复制 Key](assets/screenshots/apikey-copy.png)
 
 
 > [!WARNING]
@@ -71,16 +71,16 @@ dsh --version
 4. 点**安装**，等它提示「已安装，请重启 DSH 加载它」，再点**完成**。
 
 
-![image](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/dsh-1.png)
+![插件页里的「添加插件」入口](assets/screenshots/install-open.png)
 
-![image](https://mojieagentflow.tos-cn-guangzhou.volces.com/uploads/apidoc/dsh-2.png)
+![添加插件对话框：粘贴包名 `@mojieai/dsh-mojie-model-provider`](assets/screenshots/install-dialog.png)
 
 #### 方式 B · 一行命令
 
 打开终端（PowerShell / Terminal）：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/latest/download/mojieai-dsh-mojie-model-provider-0.2.2.tgz
+dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/download/v0.2.3/mojieai-dsh-mojie-model-provider-0.2.3.tgz
 ```
 
 #### 装完必须重启一次
