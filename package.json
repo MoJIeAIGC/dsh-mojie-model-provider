@@ -1,7 +1,7 @@
 {
   "name": "@mojieai/dsh-mojie-model-provider",
   "description": "Standalone DeepSeek Harness (dsh) plugin: Mojie (mojieaigc.com) LLM model provider",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "publishConfig": {
     "access": "public"
   },
