@@ -11,7 +11,9 @@
  * The card auto-fills what it can: the model catalog comes from the shipped
  * snapshot before discovery answers and from `/v1/models` afterwards, every row
  * carries the disclosed context window / output cap / input types, and each
- * model's thinking levels are the vendor recommendation the adapter publishes.
+ * model's thinking levels are the ladder the listing publishes (with the vendor
+ * recommendation only as the fallback for a silent listing), exactly as the
+ * adapter resolves them.
  * The API key is still write-only and travels through the credentials service,
  * exactly as the page stores any other provider key.
  *
@@ -181,9 +183,10 @@ function imageOptionValues(discovered) {
 /**
  * Field-level problems with the drafted model list.
  *
- * An absent or empty ladder means “auto”: the adapter applies the vendor
- * recommendation, so it is not a failure. Only a declared ladder can be wrong
- * (duplicates, or a default that is not one of its rungs).
+ * An absent or empty ladder means “auto”: the adapter publishes the ladder the
+ * listing disclosed (or the vendor recommendation when it disclosed none), so it
+ * is not a failure. Only a declared ladder can be wrong (duplicates, or a default
+ * that is not one of its rungs).
  * @param {object[]} rows - draft rows.
  * @returns {{ rowErrors: Map<string, string>, duplicateIds: Set<string> }} the problems.
  */
@@ -244,7 +247,7 @@ export function ModelRow(props) {
     onAddLevel, onRemoveLevel, onDefaultLevel, onRemove,
   } = props
   const mode = reasoningMode(row)
-  const ladder = effectiveReasoning(row)
+  const ladder = effectiveReasoning(row, meta)
   const modalities = effectiveModalities(row, meta)
   const levels = declaredEfforts(row) ?? []
   const vendor = VENDOR_LABELS[ladder?.vendor ?? ''] ?? ladder?.vendor ?? '厂商'
@@ -337,27 +340,31 @@ export function ModelRow(props) {
             style: { maxWidth: 170 },
             onChange: (event) => onReasoningMode(event.target.value),
           }, [
-            h('option', { key: 'auto', value: 'auto' }, '自动（厂商建议）'),
+            h('option', { key: 'auto', value: 'auto' }, '自动（推荐档位）'),
             h('option', { key: 'custom', value: 'custom' }, '自定义档位'),
             h('option', { key: 'off', value: 'off' }, '关闭思考'),
           ]),
         ]),
         mode === 'auto' ? h(Fragment, { key: 'auto' }, [
           ladder === undefined
-            ? h('p', { key: 'none', className: cls.hint }, '该模型 ID 还没有档位建议。')
+            ? h('p', { key: 'none', className: cls.hint }, '没有可选思考档位（主站未公布，或该模型固定思考）。')
             : h('div', { key: 'chips', className: cls.efforts }, ladder.efforts.map((rung) => h(Chip, {
               key: rung.id,
               isDefault: rung.id === ladder.defaultEffort,
               title: rung.description,
             }, rung.id))),
           ladder === undefined ? null : h('p', { key: 'hint', className: cls.hint },
-            `${vendor} 建议档位，默认 ${ladder.defaultEffort ?? '未指定'}；随请求发送 reasoning.effort。`),
+            ladder.source === 'published'
+              ? `主站公布的思考档位${ladder.defaultEffort === undefined ? '，默认由站点决定' : `，默认 ${ladder.defaultEffort}`}；随请求发送 reasoning.effort。`
+              : `${vendor} 建议档位，默认 ${ladder.defaultEffort ?? '未指定'}；随请求发送 reasoning.effort。`),
         ]) : null,
         mode === 'off' ? h('p', { key: 'off', className: cls.hint }, '不发送 reasoning.effort；模型选择器不显示思考档位。') : null,
         mode === 'custom' ? h(Fragment, { key: 'custom' }, [
           h('p', { key: 'hint', className: cls.hint }, ladder?.source === 'declared'
             ? `${vendor} 档位已写入配置，可按需增删。`
-            : `已自动填入 ${vendor} 建议档位，可继续增删。`),
+            : ladder?.source === 'published'
+              ? '已自动填入主站公布的档位，可继续增删。'
+              : `已自动填入 ${vendor} 建议档位，可继续增删。`),
           ...levels.map((level, index) => h('div', { key: `level-${String(index)}`, className: cls.modelReasoningRow }, [
             h(SelectInput, {
               key: 'level',
@@ -474,6 +481,11 @@ function MojieProviderCard(props) {
           ...typeof model.contextWindow === 'number' ? { contextWindow: model.contextWindow } : {},
           ...typeof model.maxTokens === 'number' ? { maxTokens: model.maxTokens } : {},
           ...Array.isArray(model.inputModalities) && model.inputModalities.length > 0 ? { inputModalities: [...model.inputModalities] } : {},
+          ...typeof model.supportsReasoning === 'boolean' ? { supportsReasoning: model.supportsReasoning } : {},
+          ...Array.isArray(model.reasoningLevels) ? { reasoningLevels: [...model.reasoningLevels] } : {},
+          ...typeof model.canDisableReasoning === 'boolean' ? { canDisableReasoning: model.canDisableReasoning } : {},
+          ...typeof model.defaultReasoningEffort === 'string' ? { defaultReasoningEffort: model.defaultReasoningEffort } : {},
+          ...Array.isArray(model.features) ? { features: [...model.features] } : {},
         }]
       })
       setDiscovered(known)
@@ -617,7 +629,7 @@ function MojieProviderCard(props) {
       updateRowAt(index, { reasoning: undefined, reasoningEfforts: undefined, defaultReasoningEffort: undefined })
       return
     }
-    const ladder = effectiveReasoning(row) ?? autoReasoning(row.id)
+    const ladder = effectiveReasoning(row, metaById.get(row.id)) ?? autoReasoning(row.id)
     updateRowAt(index, {
       reasoning: undefined,
       reasoningEfforts: ladder === undefined ? ['medium'] : ladder.efforts.map((rung) => rung.id),

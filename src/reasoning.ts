@@ -8,12 +8,13 @@
  * means nothing to the harness, so this module owns the vocabulary and the
  * adapter sends each id verbatim as the Responses field `reasoning.effort`.
  *
- * The site publishes no effort vocabulary: `/v1/models` only reports
- * `supports_reasoning: true | false`. The plugin therefore recommends a ladder
- * per vendor and applies it without waiting for upstream confirmation. The
- * parameter is always sent for a reasoning-capable model; a rejection is treated
- * as an upstream bug (surfaced as `INVALID_REQUEST`) rather than a reason to
- * silently drop the parameter and retry.
+ * `/v1/models` now publishes the real vocabulary per model: `reasoning.levels`
+ * lists the selectable ids, `reasoning.can_disable` says whether `none` is
+ * accepted, and `reasoning.default` names the site's own default (`native` when
+ * the provider default applies). The adapter publishes exactly that ladder. The
+ * per-vendor table below stays as the fallback for rows that publish no
+ * metadata (older mirrors, self-hosted relays, ids added between syncs), so the
+ * first request of a session still has a picker when the listing is silent.
  */
 
 /** One selectable thinking level, published to DSH selectors. */
@@ -66,10 +67,92 @@ const HIGH: ReasoningRung = {
   description: 'Deep thinking for hard debugging, math, and multi-step planning; slowest and most expensive.',
 }
 
+const XHIGH: ReasoningRung = {
+  id: 'xhigh',
+  name: 'Extra high',
+  description: 'Above high, for the hardest reasoning the model offers; noticeably slower and costlier.',
+}
+
+const MAX: ReasoningRung = {
+  id: 'max',
+  name: 'Max',
+  description: 'The top rung a model publishes: maximum deliberation, usually reserved for the hardest problems.',
+}
+
 /** Level metadata keyed by id, so a hand-written ladder still gets labels. */
 const KNOWN_RUNGS: ReadonlyMap<string, ReasoningRung> = new Map(
-  [OFF, MINIMAL, LOW, MEDIUM, HIGH].map((rung) => [rung.id, rung]),
+  [OFF, MINIMAL, LOW, MEDIUM, HIGH, XHIGH, MAX].map((rung) => [rung.id, rung]),
 )
+
+/**
+ * Selectable ids for one model, built from the thinking metadata the listing
+ * publishes.
+ *
+ * `can_disable` adds `none` as the bottom rung because the site accepts it to
+ * turn thinking off; `levels` keeps the site's own ascending order and drops
+ * blanks and duplicates. A published ladder that names a level the plugin does
+ * not know (a future `ultra`) is still selectable.
+ * @param levels - `reasoning.levels` as published, when disclosed.
+ * @param canDisable - `reasoning.can_disable` as published, when disclosed.
+ * @returns effort ids from least to greatest effort.
+ */
+export function publishedEffortIds(
+  levels: readonly string[] | undefined,
+  canDisable: boolean | undefined,
+): string[] {
+  const ids: string[] = []
+  if (canDisable === true) ids.push('none')
+  for (const raw of levels ?? []) {
+    const id = raw.trim()
+    if (id.length > 0 && !ids.includes(id)) ids.push(id)
+  }
+  return ids
+}
+
+/**
+ * Translate the site's `reasoning.default` into a selectable id.
+ *
+ * `'off'` is the site's spelling for "thinking off" and maps to `none` when
+ * that rung exists; any other value is kept only when the published ladder
+ * contains it. `'native'` is not an id, so it yields nothing here.
+ * @param raw - `reasoning.default` as published, when disclosed.
+ * @param efforts - selectable ids for this model.
+ * @returns the id the listing named, or undefined when it named none of them.
+ */
+export function publishedDefaultEffort(
+  raw: string | undefined,
+  efforts: readonly string[],
+): string | undefined {
+  if (raw === undefined) return undefined
+  const id = raw === 'off' ? 'none' : raw
+  return efforts.includes(id) ? id : undefined
+}
+
+/** Ladder the plugin prefers when nobody names a default and the vendor has none in the list. */
+const PREFERRED_DEFAULT_EFFORT = 'medium'
+
+/**
+ * Choose the default effort for a published ladder.
+ *
+ * A named default wins; otherwise the vendor's own default is used when the
+ * listing still offers it, then `medium`, and finally the first non-`none`
+ * rung (so a model whose only options are `low`/`high` never defaults to
+ * thinking off). `none` is the last resort only when it is the whole ladder.
+ * @param efforts - selectable ids in ascending order.
+ * @param named - default named by the listing, when it named a selectable id.
+ * @param vendorDefault - default the vendor profile prefers.
+ * @returns the id to materialize, or undefined for an empty ladder.
+ */
+export function defaultEffortFor(
+  efforts: readonly string[],
+  named?: string,
+  vendorDefault?: string,
+): string | undefined {
+  if (named !== undefined && efforts.includes(named)) return named
+  if (vendorDefault !== undefined && efforts.includes(vendorDefault)) return vendorDefault
+  if (efforts.includes(PREFERRED_DEFAULT_EFFORT)) return PREFERRED_DEFAULT_EFFORT
+  return efforts.find((id) => id !== 'none') ?? efforts[0]
+}
 
 /**
  * One vendor rule: a model-id pattern plus the ladder it recommends.

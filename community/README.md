@@ -47,11 +47,11 @@ Add MoJIeAIGC/dsh-mojie-model-provider (model)
 ### PR 正文（可直接粘贴）
 
 ```markdown
-Adds one entry for `@mojieai/dsh-mojie-model-provider@0.2.2`.
+Adds one entry for `@mojieai/dsh-mojie-model-provider@0.3.0`.
 
 - `package.json` declares `dsh.bundle.patch` → `cordis.patch.yml`; the repo
   contains the TypeScript source, not only a client manifest.
-- Installs from the prebuilt v0.2.2 tarball (`tarball:`): `lib/` is build
+- Installs from the prebuilt v0.3.0 tarball (`tarball:`): `lib/` is build
   output and is not committed, so installing from source would ship no JS.
 - The bundle mounts a model-provider row under the `mojie` settings namespace
   and registers four image tools (`mojie_generate_image`, `mojie_edit_image`,
@@ -80,7 +80,7 @@ Adds one entry for `@mojieai/dsh-mojie-model-provider@0.2.2`.
    标题、图标、截图正常。
 2. `https://dshmarket.com/index.json` 里能搜到 `@mojieai/dsh-mojie-model-provider`
    （构建约在合并后一天刷新）。
-3. 干净 profile：设置 → 插件 → 发现 → 搜 `Mojie` → 卡片显示 0.2.2 → 安装 →
+3. 干净 profile：设置 → 插件 → 发现 → 搜 `Mojie` → 卡片显示 0.3.0 → 安装 →
    **重启** → 设置 → 模型 出现 Mojie 行 → 填 Key → `/image` 出图。
 4. 抽查条目描述与代码一致。
 
@@ -88,7 +88,7 @@ Adds one entry for `@mojieai/dsh-mojie-model-provider@0.2.2`.
 
 - 6 张截图在 `assets/screenshots/`，README 已改用相对路径引用，根目录 `screenshots.json`
   声明了轮播顺序；push 后市场/站点下一次构建自动读取。
-- 想补更贴 0.2.2 卖点的图（设置行 / `/image` 结果 / `/image models`），
+- 想补更贴 0.3.0 卖点的图（设置行 / `/image` 结果 / `/image models`），
   见 `assets/screenshots/README.md`，把新文件加进 `screenshots.json` 即可（≤ 8 张）。
 
 ## 后续维护

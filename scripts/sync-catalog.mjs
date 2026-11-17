@@ -105,8 +105,8 @@ async function fetchListing(root, key) {
 
 /**
  * Normalize one listing row exactly like `readListing` in src/discovery.ts: ids and
- * names as reported, capacity only when disclosed, and modalities narrowed to the two
- * DSH can actually send.
+ * names as reported, capacity only when disclosed, modalities narrowed to the two
+ * DSH can actually send, and thinking metadata turned into a concrete ladder.
  */
 function normalizeRow(row) {
   if (typeof row !== 'object' || row === null) return undefined
@@ -124,6 +124,62 @@ function normalizeRow(row) {
     ...contextWindow === undefined ? {} : { contextWindow },
     ...maxTokens === undefined ? {} : { maxTokens },
     ...modalities.length === 0 ? {} : { inputModalities: modalities },
+    ...normalizeReasoning(row),
+    ...normalizeFeatures(row),
+  }
+}
+
+/**
+ * Capability tags as published, deduplicated and trimmed.
+ * @param row - one `/v1/models` row.
+ * @returns `features` when disclosed, or nothing.
+ */
+function normalizeFeatures(row) {
+  if (!Array.isArray(row.features)) return {}
+  const features = [...new Set(row.features
+    .filter((entry) => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0))]
+  return features.length === 0 ? {} : { features }
+}
+
+/**
+ * Turn the published thinking block into the snapshot fields `catalog.ts` reads.
+ *
+ * `can_disable` adds `none` as the bottom rung, `levels` keeps the site's own
+ * ascending order, and the published default is kept only when it names a
+ * selectable id (`native` names none, so it stays absent and `catalog.ts` picks
+ * the vendor/medium fallback; `off` maps to `none` when that rung exists).
+ * @param row - one `/v1/models` row.
+ * @returns snapshot fields, or nothing when the listing published no metadata.
+ */
+function normalizeReasoning(row) {
+  const block = typeof row.reasoning === 'object' && row.reasoning !== null ? row.reasoning : undefined
+  const levels = Array.isArray(block?.levels)
+    ? [...new Set(block.levels
+      .filter((entry) => typeof entry === 'string')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0))]
+    : []
+  const canDisable = block?.can_disable === true
+  const publishedDefault = typeof block?.default === 'string' && block.default.length > 0 ? block.default : undefined
+  const supportsReasoning = typeof row.supports_reasoning === 'boolean'
+    ? row.supports_reasoning
+    : block === undefined
+      ? undefined
+      : levels.length > 0 || canDisable || publishedDefault !== 'off'
+  if (supportsReasoning === undefined) return {}
+  const efforts = []
+  if (supportsReasoning) {
+    if (canDisable) efforts.push('none')
+    for (const level of levels) if (!efforts.includes(level)) efforts.push(level)
+  }
+  const defaultId = publishedDefault === 'off' ? 'none' : publishedDefault
+  const defaultReasoningEffort = defaultId !== undefined && efforts.includes(defaultId) ? defaultId : undefined
+  return {
+    supportsReasoning,
+    ...efforts.length === 0 ? {} : { reasoningEfforts: efforts },
+    ...defaultReasoningEffort === undefined ? {} : { defaultReasoningEffort },
   }
 }
 
@@ -175,6 +231,13 @@ function renderModule(root, stamp, catalog) {
  * Fetched: ${stamp}
  * Models: ${catalog.length}
  *
+ * Every row carries the capacity the listing disclosed (context window, output
+ * cap, text/image input) and its published thinking ladder: \`supportsReasoning\`
+ * says whether the model can think, \`reasoningEfforts\` lists the selectable ids
+ * (with \`none\` when thinking can be disabled), and \`defaultReasoningEffort\` is
+ * present only when the site names a level instead of \`native\`. \`features\` keeps
+ * the upstream capability tags for diagnostics and future surfaces.
+ *
  * Refresh with \`pnpm sync:catalog\` (scripts/sync-catalog.mjs). This snapshot keeps the
  * first request of a session correct before live discovery answers; the live listing
  * still overrides it wherever it discloses more.
@@ -198,6 +261,16 @@ function renderRow(model) {
     ...model.inputModalities === undefined
       ? []
       : [`inputModalities: [${model.inputModalities.map(quote).join(', ')}]`],
+    ...model.supportsReasoning === undefined ? [] : [`supportsReasoning: ${String(model.supportsReasoning)}`],
+    ...model.reasoningEfforts === undefined
+      ? []
+      : [`reasoningEfforts: [${model.reasoningEfforts.map(quote).join(', ')}]`],
+    ...model.defaultReasoningEffort === undefined
+      ? []
+      : [`defaultReasoningEffort: ${quote(model.defaultReasoningEffort)}`],
+    ...model.features === undefined
+      ? []
+      : [`features: [${model.features.map(quote).join(', ')}]`],
   ]
   const single = `  { ${fields.join(', ')} },`
   if (single.length <= LINE_WIDTH) return single

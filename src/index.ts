@@ -43,11 +43,19 @@ export type { MojieDiscoveredModel } from './discovery.js'
 /**
  * Thinking vocabulary shared with other plugins.
  *
- * `vendorReasoningProfile` answers "which ladder should this model id get" and
- * `describeEfforts` labels a hand-written ladder, so an embedder recommends the
- * same levels the provider route publishes.
+ * `publishedEffortIds` / `publishedDefaultEffort` turn a `/v1/models`
+ * `reasoning` block into DSH effort ids, and `vendorReasoningProfile` answers
+ * "which ladder should this id get" when the listing is silent.
+ * `describeEfforts` labels a hand-written ladder, so an embedder publishes the
+ * same levels the provider route does.
  */
-export { describeEfforts, vendorReasoningProfile } from './reasoning.js'
+export {
+  defaultEffortFor,
+  describeEfforts,
+  publishedDefaultEffort,
+  publishedEffortIds,
+  vendorReasoningProfile,
+} from './reasoning.js'
 export type { ReasoningRung, VendorReasoningProfile } from './reasoning.js'
 
 /**

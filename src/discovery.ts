@@ -11,22 +11,37 @@ import type { ResolvedConfig } from './config.js'
 import { mergeCatalog } from './catalog.js'
 
 /**
- * One discovered model, plus the one capability Mojie discloses that
+ * One discovered model, plus the capability metadata Mojie discloses that
  * `LlmDiscoveredModel` has no field for.
  *
  * The generic discovery contract deliberately stays provider-neutral, so the
- * reasoning flag lives here and only `catalog.ts` reads it: a model the site
- * marks `supports_reasoning: false` gets no thinking ladder, while an unlisted
- * capability stays unknown and the vendor recommendation applies.
+ * thinking fields live here and only `catalog.ts` reads them: the listing names
+ * the selectable levels (`reasoning.levels`), whether thinking can be turned off
+ * (`reasoning.can_disable`), and the site's default (`reasoning.default`). An
+ * unlisted capability stays unknown and the vendor recommendation applies.
  */
 export interface MojieDiscoveredModel extends LlmDiscoveredModel {
   /** `/v1/models` `supports_reasoning`; absent when the listing did not say. */
   readonly supportsReasoning?: boolean
+  /** `/v1/models` `reasoning.levels`: exact effort ids the relay accepts. */
+  readonly reasoningLevels?: readonly string[]
+  /** `/v1/models` `reasoning.can_disable`: whether `none` is accepted. */
+  readonly canDisableReasoning?: boolean
+  /** `/v1/models` `reasoning.default`: `native`, `off`, or one of the levels. */
+  readonly defaultReasoningEffort?: string
+  /** `/v1/models` `features`: upstream capability tags (`tool-call`, `vision`, …). */
+  readonly features?: readonly string[]
 }
 
 interface ModelsEnvelope {
   object?: unknown
   data?: unknown
+}
+
+interface ModelsReasoning {
+  levels?: unknown
+  can_disable?: unknown
+  default?: unknown
 }
 
 interface ModelsRow {
@@ -39,6 +54,8 @@ interface ModelsRow {
   max_output_tokens?: unknown
   input_modalities?: unknown
   supports_reasoning?: unknown
+  reasoning?: unknown
+  features?: unknown
 }
 
 function asString(value: unknown): string | undefined {
@@ -55,6 +72,59 @@ function asModalities(value: unknown): ModelModality[] | undefined {
   const known = value.filter((entry): entry is ModelModality => entry === 'text' || entry === 'image')
   if (known.length === 0) return undefined
   return [...new Set(known)]
+}
+
+/** Selectable thinking levels as published, in the site's own ascending order. */
+function asReasoningLevels(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const ids: string[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue
+    const id = entry.trim()
+    if (id.length > 0 && !ids.includes(id)) ids.push(id)
+  }
+  return ids.length === 0 ? undefined : ids
+}
+
+/** Capability tags as published, deduplicated and trimmed; absent when none. */
+function asFeatures(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const tags: string[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue
+    const tag = entry.trim()
+    if (tag.length > 0 && !tags.includes(tag)) tags.push(tag)
+  }
+  return tags.length === 0 ? undefined : tags
+}
+
+/**
+ * Read the published thinking block without guessing at missing fields.
+ *
+ * `supports_reasoning` is the authority when present; otherwise a disclosed
+ * `reasoning` object implies capability unless its default is `off`. The default
+ * stays raw (`native` / `off` / a level) so `catalog.ts` can map it onto the
+ * ladder it resolves.
+ */
+function asReasoning(row: ModelsRow): Pick<
+  MojieDiscoveredModel,
+  'supportsReasoning' | 'reasoningLevels' | 'canDisableReasoning' | 'defaultReasoningEffort'
+> {
+  const block = typeof row.reasoning === 'object' && row.reasoning !== null ? row.reasoning as ModelsReasoning : undefined
+  const levels = block === undefined ? undefined : asReasoningLevels(block.levels)
+  const canDisable = block?.can_disable === true ? true : undefined
+  const publishedDefault = typeof block?.default === 'string' && block.default.length > 0 ? block.default : undefined
+  const supportsReasoning = typeof row.supports_reasoning === 'boolean'
+    ? row.supports_reasoning
+    : block === undefined
+      ? undefined
+      : levels !== undefined || canDisable === true || publishedDefault !== 'off'
+  return {
+    ...supportsReasoning === undefined ? {} : { supportsReasoning },
+    ...levels === undefined ? {} : { reasoningLevels: levels },
+    ...canDisable === undefined ? {} : { canDisableReasoning: canDisable },
+    ...publishedDefault === undefined ? {} : { defaultReasoningEffort: publishedDefault },
+  }
 }
 
 /**
@@ -173,16 +243,16 @@ function readListing(body: unknown): MojieDiscoveredModel[] {
     const contextWindow = asPositiveInteger(raw.context_length) ?? asPositiveInteger(raw.context_window)
     const maxTokens = asPositiveInteger(raw.max_output_tokens)
     const inputModalities = asModalities(raw.input_modalities)
-    // Only a real boolean answers "can this model think"; anything else stays
-    // unknown so the vendor recommendation still applies.
-    const supportsReasoning = typeof raw.supports_reasoning === 'boolean' ? raw.supports_reasoning : undefined
+    const reasoning = asReasoning(raw)
+    const features = asFeatures(raw.features)
     result.push({
       id,
       name: asString(raw.name) ?? id,
       ...contextWindow === undefined ? {} : { contextWindow },
       ...maxTokens === undefined ? {} : { maxTokens },
       ...inputModalities === undefined ? {} : { inputModalities },
-      ...supportsReasoning === undefined ? {} : { supportsReasoning },
+      ...reasoning,
+      ...features === undefined ? {} : { features },
     })
   }
   return result

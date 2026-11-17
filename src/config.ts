@@ -25,9 +25,10 @@ export interface MojieModelConfig {
   /** Default reasoning effort when callers omit one. */
   defaultReasoningEffort?: string
   /**
-   * Thinking ladder source. `'auto'` (default) applies the per-vendor
-   * recommendation; `'off'` declares the model as non-reasoning, hiding the
-   * selector and keeping `reasoning` out of every request.
+   * Thinking ladder source. `'auto'` (default) follows the ladder the listing
+   * publishes (falling back to the per-vendor recommendation when it is silent);
+   * `'off'` declares the model as non-reasoning, hiding the selector and keeping
+   * `reasoning` out of every request.
    */
   reasoning?: 'auto' | 'off'
   /** Mid-conversation system prompt mode when confirmed. */
@@ -48,11 +49,12 @@ export interface Config {
   /** Advisory model metadata and overrides. */
   models: Volatile<MojieModelConfig[]>
   /**
-   * Apply the per-vendor thinking ladder to models that declare no efforts.
+   * Let the per-vendor thinking recommendation fill in when the listing publishes
+   * no ladder.
    *
-   * The site publishes no effort vocabulary, so the plugin recommends one per
-   * vendor and sends it as `reasoning.effort` regardless of whether the relay
-   * honors it. Disable this to stop sending the field for unconfigured models.
+   * Published `reasoning` metadata (levels, disable switch, default) always
+   * applies; this switch only stops the guess for a silent listing. An explicit
+   * per-model `reasoningEfforts` still wins.
    */
   reasoningDefaults: Volatile<boolean>
   /**
@@ -206,10 +208,10 @@ export const Config = z.object({
   apiKeyEnv: z.string().role('credential-ref').default('MOJIE_API_KEY').volatile(),
   baseURL: z.string().default('https://www.mojieaigc.com').volatile(),
   models: z.array(modelSchema).default([]).volatile(),
-  // Thinking: the site publishes only `supports_reasoning`, so the plugin
-  // recommends a ladder per vendor and sends `reasoning.effort` for every model
-  // that does not opt out. Upstream rejection is an upstream bug, not a reason to
-  // retry without the parameter.
+  // Thinking: the listing publishes the real per-model ladder, and the vendor
+  // recommendation only answers when it is silent. `reasoningDefaults` gates that
+  // fallback only. Upstream rejection of a published level is an upstream bug,
+  // not a reason to retry without the parameter.
   reasoningDefaults: z.boolean().default(true).volatile(),
   // Wait for response headers at most this long; a silent gateway fails fast.
   firstByteTimeoutMs: z.number().min(1).default(60_000).volatile(),

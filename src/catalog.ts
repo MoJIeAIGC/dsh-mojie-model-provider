@@ -4,14 +4,19 @@ import type {
   LlmModelReasoningInfo,
   LlmResolvedModelInfo,
   ModelModality,
-  ReasoningEffortId,
 } from '@deepseek-ai/dsh-llm'
 import { ReasoningEffortId as brandReasoningEffort } from '@deepseek-ai/dsh-llm'
 import { BUILTIN_CATALOG_MODELS } from './catalog.generated.js'
 import type { MojieModelConfig } from './config.js'
 import type { MojieDiscoveredModel } from './discovery.js'
 import { sortModelOrder } from './order.js'
-import { describeEfforts, vendorReasoningProfile } from './reasoning.js'
+import {
+  defaultEffortFor,
+  describeEfforts,
+  publishedDefaultEffort,
+  publishedEffortIds,
+  vendorReasoningProfile,
+} from './reasoning.js'
 
 /**
  * Built-in metadata for one Mojie model. `scripts/sync-catalog.mjs` writes the rows
@@ -25,8 +30,19 @@ export interface MojieCatalogModel {
   contextWindow?: number
   maxTokens?: number
   inputModalities?: ModelModality[]
-  reasoningEfforts?: ReasoningEffortId[]
-  defaultReasoningEffort?: ReasoningEffortId
+  /**
+   * `/v1/models` `supports_reasoning`. Present on every generated row, which is
+   * how a snapshot row says "the listing published thinking metadata": a `false`
+   * value, or a `true` value with no selectable levels, suppresses the vendor
+   * recommendation instead of guessing a ladder.
+   */
+  supportsReasoning?: boolean
+  /** Selectable effort ids as published (ascending; includes `none` when disable is allowed). */
+  reasoningEfforts?: readonly string[]
+  /** Published default effort; absent means the provider's own default applies. */
+  defaultReasoningEffort?: string
+  /** Upstream capability tags as published (`tool-call`, `vision`, `document`, …). */
+  features?: readonly string[]
 }
 
 /** Snapshot lookup: built-ins keep the first request of a session correct before discovery answers. */
@@ -77,22 +93,70 @@ export function mergeModelInfo(
 /** Options that shape one exact-model resolution. */
 export interface ResolveModelOptions {
   /**
-   * Apply the per-vendor thinking ladder when neither the configuration nor the
-   * built-in snapshot declares efforts. Defaults to on: the site publishes no
-   * effort vocabulary, so the recommendation is the only useful answer, and the
-   * parameter is sent whether or not the relay honors it.
+   * Let the per-vendor recommendation fill in when the listing publishes no
+   * ladder. Defaults to on. Published metadata always applies — this switch only
+   * stops the guess, so a model that rules its thinking out stays without a
+   * picker. Explicit per-model configuration always wins.
    */
   readonly reasoningDefaults?: boolean
+}
+
+/** One resolved ladder, as plain ids before branding. */
+interface ResolvedLadder {
+  readonly efforts: readonly string[]
+  readonly defaultEffort?: string
+}
+
+/** Thinking metadata published by the live listing, when it disclosed any. */
+function discoveredLadder(discovered: MojieDiscoveredModel | undefined): ResolvedLadder | undefined {
+  if (discovered === undefined) return undefined
+  const published = discovered.supportsReasoning !== undefined || discovered.reasoningLevels !== undefined
+  if (!published) return undefined
+  // A model the listing marks as non-thinking (or as always-on with no selectable
+  // level) publishes no ladder at all; the empty list records that decision so the
+  // vendor recommendation cannot override it.
+  if (discovered.supportsReasoning === false) return { efforts: [] }
+  const efforts = publishedEffortIds(discovered.reasoningLevels, discovered.canDisableReasoning)
+  const defaultEffort = publishedDefaultEffort(discovered.defaultReasoningEffort, efforts)
+  return { efforts, ...defaultEffort === undefined ? {} : { defaultEffort } }
+}
+
+/** Thinking metadata carried by the shipped snapshot, when it disclosed any. */
+function builtinLadder(builtin: MojieCatalogModel | undefined): ResolvedLadder | undefined {
+  if (builtin?.supportsReasoning === undefined) return undefined
+  const efforts = builtin.reasoningEfforts ?? []
+  if (!builtin.supportsReasoning) return { efforts: [] }
+  const defaultEffort = builtin.defaultReasoningEffort !== undefined && efforts.includes(builtin.defaultReasoningEffort)
+    ? builtin.defaultReasoningEffort
+    : undefined
+  return { efforts, ...defaultEffort === undefined ? {} : { defaultEffort } }
+}
+
+/** Brand one plain ladder into the shape DSH publishes. */
+function ladderInfo(
+  efforts: readonly string[],
+  defaultEffort: string | undefined,
+  profile: ReturnType<typeof vendorReasoningProfile>,
+): LlmModelReasoningInfo {
+  return {
+    efforts: describeEfforts(efforts, profile).map((effort) => ({
+      id: brandReasoningEffort(effort.id),
+      name: effort.name,
+      description: effort.description,
+    })),
+    ...defaultEffort === undefined ? {} : { defaultEffort: brandReasoningEffort(defaultEffort) },
+  }
 }
 
 /**
  * Resolve the thinking ladder for one model.
  *
- * Order: an explicit per-model opt-out, then declared efforts (configuration,
- * then built-in snapshot), then the vendor recommendation. The recommendation is
- * skipped only when the caller disabled defaults or the live listing reports the
- * model cannot think at all; an unlisted capability stays optimistic so the first
- * request of a session still has a picker.
+ * Order: an explicit per-model opt-out, then efforts declared in configuration,
+ * then the ladder the live listing publishes, then the shipped snapshot, and
+ * finally the per-vendor recommendation. Published metadata wins over the
+ * recommendation because it is the relay's own vocabulary; the recommendation
+ * only answers when the listing is silent, and is skipped when the caller
+ * disabled the fallback.
  * @param id - exact model id.
  * @param configured - explicitly configured model entry, when present.
  * @param builtin - shipped snapshot row, when known.
@@ -108,39 +172,34 @@ function resolveReasoning(
   options: ResolveModelOptions,
 ): LlmModelReasoningInfo | undefined {
   if (configured?.reasoning === 'off') return undefined
-  const profile = options.reasoningDefaults === false ? undefined : vendorReasoningProfile(id)
-  const declaredIds: readonly string[] | undefined = configured?.reasoningEfforts?.length
-    ? configured.reasoningEfforts
-    : builtin?.reasoningEfforts?.length
-      ? builtin.reasoningEfforts
-      : undefined
-  if (declaredIds !== undefined) {
+  // The vendor profile is only a label source once real metadata exists, so it is
+  // resolved unconditionally and consulted for its default later.
+  const profile = vendorReasoningProfile(id)
+  if (configured?.reasoningEfforts?.length) {
+    const declared = configured.reasoningEfforts
+    const published = discoveredLadder(discovered) ?? builtinLadder(builtin)
     // A declared ladder may name levels the vendor profile does not know, so the
     // default has to appear in the declared list to be legal.
-    const configuredDefault = configured?.defaultReasoningEffort ?? builtin?.defaultReasoningEffort
-    const defaultEffort = configuredDefault !== undefined && declaredIds.includes(configuredDefault)
+    const configuredDefault = configured.defaultReasoningEffort ?? published?.defaultEffort
+    const defaultEffort = configuredDefault !== undefined && declared.includes(configuredDefault)
       ? configuredDefault
-      : profile !== undefined && declaredIds.includes(profile.defaultEffort)
+      : profile !== undefined && declared.includes(profile.defaultEffort)
         ? profile.defaultEffort
         : undefined
-    return {
-      efforts: describeEfforts(declaredIds, profile).map((effort) => ({
-        id: brandReasoningEffort(effort.id),
-        name: effort.name,
-        description: effort.description,
-      })),
-      ...defaultEffort === undefined ? {} : { defaultEffort: brandReasoningEffort(defaultEffort) },
-    }
+    return ladderInfo(declared, defaultEffort, profile)
   }
-  if (profile === undefined || discovered?.supportsReasoning === false) return undefined
-  return {
-    efforts: profile.efforts.map((effort) => ({
-      id: brandReasoningEffort(effort.id),
-      name: effort.name,
-      description: effort.description,
-    })),
-    defaultEffort: brandReasoningEffort(profile.defaultEffort),
+  const published = discoveredLadder(discovered) ?? builtinLadder(builtin)
+  if (published !== undefined) {
+    // An empty ladder is the listing's "nothing selectable" answer: no picker and
+    // no guessed default.
+    if (published.efforts.length === 0) return undefined
+    // `native` names no level, so fall back to the vendor default when the
+    // listing still offers it, keeping a concrete selection in the picker.
+    const defaultEffort = defaultEffortFor(published.efforts, published.defaultEffort, profile?.defaultEffort)
+    return ladderInfo(published.efforts, defaultEffort, profile)
   }
+  if (options.reasoningDefaults === false || profile === undefined) return undefined
+  return ladderInfo(profile.efforts.map((effort) => effort.id), profile.defaultEffort, profile)
 }
 
 /**

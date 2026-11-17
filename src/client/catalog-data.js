@@ -2,19 +2,25 @@
  * Catalog and thinking metadata for the browser half.
  *
  * The Models page drafts model rows in the browser, but the merge rules and the
- * per-vendor thinking ladder live in the provider. This module is the client
- * mirror: it imports the same framework-free source (`catalog.generated.ts`,
+ * thinking ladder live in the provider. This module is the client mirror: it
+ * imports the same framework-free source (`catalog.generated.ts`,
  * `reasoning.ts`) the adapter resolves with, so a shipped snapshot and the
- * vendor recommendation auto-fill the card without any extra wire field.
+ * published thinking metadata auto-fill the card without any extra wire field.
  * @module @mojieai/dsh-mojie-model-provider/client/catalog-data
  */
 
 import { BUILTIN_CATALOG_MODELS } from '../catalog.generated.ts'
 import { sortModelOrder } from '../order.ts'
-import { describeEfforts, vendorReasoningProfile } from '../reasoning.ts'
+import {
+  defaultEffortFor,
+  describeEfforts,
+  publishedDefaultEffort,
+  publishedEffortIds,
+  vendorReasoningProfile,
+} from '../reasoning.ts'
 
 /** Display order of the effort vocabulary the provider knows. */
-export const EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high']
+export const EFFORT_LEVELS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
 /** Snapshot lookup, so an offline card still shows capacities and image input. */
 const BUILTIN = new Map(BUILTIN_CATALOG_MODELS.map((model) => [model.id, model]))
@@ -55,20 +61,62 @@ export function declaredEfforts(model) {
 }
 
 /**
+ * Thinking metadata carried by the shipped snapshot, in the shape the live
+ * listing uses so one resolver can read both.
+ * @param builtin - snapshot row, when known.
+ * @returns published thinking fields, or `undefined` when the row is silent.
+ */
+function builtinReasoning(builtin) {
+  if (builtin?.supportsReasoning === undefined) return undefined
+  return {
+    supportsReasoning: builtin.supportsReasoning,
+    ...Array.isArray(builtin.reasoningEfforts) ? { reasoningEfforts: [...builtin.reasoningEfforts] } : {},
+    ...typeof builtin.defaultReasoningEffort === 'string' ? { defaultReasoningEffort: builtin.defaultReasoningEffort } : {},
+  }
+}
+
+/**
+ * Concrete ladder from one published thinking descriptor.
+ *
+ * Reads both shapes the plugin sees: the live listing's raw `reasoningLevels` /
+ * `canDisableReasoning` and the snapshot's already-concrete `reasoningEfforts`.
+ * Only a level the listing actually named is returned as `defaultEffort`; a
+ * `native` default stays absent here and the caller picks a concrete one from
+ * the ladder.
+ * @param meta - live row, dialog candidate, or snapshot row carrying thinking fields.
+ * @returns `{ efforts, defaultEffort? }`, or `undefined` when nothing was published.
+ */
+function publishedLadder(meta) {
+  if (meta?.supportsReasoning === undefined
+    && !Array.isArray(meta?.reasoningLevels)
+    && !Array.isArray(meta?.reasoningEfforts)) return undefined
+  const efforts = Array.isArray(meta.reasoningEfforts)
+    ? [...meta.reasoningEfforts]
+    : meta.supportsReasoning === false
+      ? []
+      : publishedEffortIds(meta.reasoningLevels, meta.canDisableReasoning)
+  const defaultEffort = publishedDefaultEffort(meta.defaultReasoningEffort, efforts)
+  return { efforts, ...defaultEffort === undefined ? {} : { defaultEffort } }
+}
+
+/**
  * The effort ids DSH will actually publish for one row.
  *
  * Mirrors the adapter: an explicit opt-out wins, then a declared ladder
- * (configuration, then the snapshot), then the vendor recommendation.
+ * (configuration), then the ladder the listing published, then the vendor
+ * recommendation for a model that publishes nothing.
  * @param model - draft row.
+ * @param meta - live discovery metadata for this id, when known.
  * @returns the effective ladder plus where it came from.
  */
-export function effectiveReasoning(model) {
+export function effectiveReasoning(model, meta) {
   const id = typeof model?.id === 'string' ? model.id.trim() : ''
   if (model?.reasoning === 'off') return undefined
-  const profile = autoReasoning(id)
-  const declared = declaredEfforts(model) ?? declaredEfforts(builtinModel(id))
+  const profile = vendorReasoningProfile(id)
+  const published = publishedLadder(meta) ?? publishedLadder(builtinReasoning(builtinModel(id)))
+  const declared = declaredEfforts(model)
   if (declared !== undefined) {
-    const configuredDefault = model?.defaultReasoningEffort ?? builtinModel(id)?.defaultReasoningEffort
+    const configuredDefault = model?.defaultReasoningEffort ?? published?.defaultEffort
     const defaultEffort = typeof configuredDefault === 'string' && declared.includes(configuredDefault)
       ? configuredDefault
       : profile !== undefined && declared.includes(profile.defaultEffort)
@@ -80,6 +128,18 @@ export function effectiveReasoning(model) {
       vendor: profile?.vendor,
       efforts: rungs.map((rung) => ({ id: rung.id, name: rung.name, description: rung.description })),
       ...defaultEffort === undefined ? {} : { defaultEffort },
+    }
+  }
+  if (published !== undefined) {
+    // An empty ladder is the listing's "nothing selectable" answer.
+    if (published.efforts.length === 0) return undefined
+    const rungs = describeEfforts(published.efforts, profile)
+    return {
+      source: 'published',
+      vendor: profile?.vendor,
+      efforts: rungs.map((rung) => ({ id: rung.id, name: rung.name, description: rung.description })),
+      // `native` names no level: keep a concrete default in the picker.
+      defaultEffort: defaultEffortFor(published.efforts, published.defaultEffort, profile?.defaultEffort),
     }
   }
   if (profile === undefined) return undefined
@@ -150,6 +210,24 @@ export function catalogCandidates(discovered) {
 }
 
 /**
+ * Published thinking fields for one candidate, preferring live metadata.
+ * @param discovered - live row when known.
+ * @param builtin - snapshot row when known.
+ * @returns the fields to copy onto the candidate.
+ */
+function reasoningFields(discovered, builtin) {
+  if (discovered?.supportsReasoning !== undefined || Array.isArray(discovered?.reasoningLevels)) {
+    return {
+      ...typeof discovered.supportsReasoning === 'boolean' ? { supportsReasoning: discovered.supportsReasoning } : {},
+      ...Array.isArray(discovered.reasoningLevels) ? { reasoningLevels: [...discovered.reasoningLevels] } : {},
+      ...typeof discovered.canDisableReasoning === 'boolean' ? { canDisableReasoning: discovered.canDisableReasoning } : {},
+      ...typeof discovered.defaultReasoningEffort === 'string' ? { defaultReasoningEffort: discovered.defaultReasoningEffort } : {},
+    }
+  }
+  return builtinReasoning(builtin) ?? {}
+}
+
+/**
  * Merge one live row over its snapshot twin.
  * @param discovered - live row when known.
  * @param builtin - snapshot row when known.
@@ -165,12 +243,19 @@ function candidateRow(discovered, builtin) {
     : builtin?.inputModalities?.length
       ? builtin.inputModalities
       : undefined
+  const features = Array.isArray(discovered?.features) && discovered.features.length > 0
+    ? discovered.features
+    : Array.isArray(builtin?.features) && builtin.features.length > 0
+      ? builtin.features
+      : undefined
   return {
     id,
     name,
     ...contextWindow === undefined ? {} : { contextWindow },
     ...maxTokens === undefined ? {} : { maxTokens },
     ...inputModalities === undefined ? {} : { inputModalities: [...inputModalities] },
+    ...reasoningFields(discovered, builtin),
+    ...features === undefined ? {} : { features: [...features] },
   }
 }
 

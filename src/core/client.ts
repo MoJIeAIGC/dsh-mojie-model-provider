@@ -93,9 +93,11 @@ export interface MojieClientOptions {
   /** Provider route id reported by {@link MojieClient.resolveModel}; defaults to `mojie`. */
   readonly provider?: string
   /**
-   * Publish the per-vendor thinking ladder from {@link MojieClient.resolveModel}.
-   * Defaults to `true`; `false` mirrors a provider configuration that turned
-   * `reasoningDefaults` off.
+   * Publish each model's thinking ladder from {@link MojieClient.resolveModel}.
+   * Defaults to `true`; the ladder is the one the listing publishes, with the
+   * per-vendor recommendation only as the fallback for a silent listing. `false`
+   * mirrors a provider configuration that turned `reasoningDefaults` off, which
+   * cancels only that fallback.
    */
   readonly reasoningDefaults?: boolean
 }
