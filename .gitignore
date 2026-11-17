@@ -9,6 +9,8 @@ dist/
 *.tgz
 # local regression suite: kept on disk, deliberately not published
 tests/
+# local live-API test bench for the 4090 test site: not part of the plugin
+apitest/
 # developer notes: the tracked README.md is the user-facing guide
 devExplan.md
 # local scratch (proxy snapshot used while debugging network access)
