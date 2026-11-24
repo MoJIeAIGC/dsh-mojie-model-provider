@@ -43,11 +43,20 @@ const source = options.source === 'git'
   ? { type: 'git', url: repositoryURL, commit: requireCommit(options.commit) }
   : { type: 'npm' }
 
+// A floor, deliberately without a ceiling.
+//
+// A ceiling turns every future harness release into an install-time refusal,
+// including ones the plugin would run on — the plugin is better served by
+// attempting the load and reporting what actually fails. The floor is the first
+// release line whose `@deepseek-ai/dsh-llm` carries the exports this bundle
+// links against (`npm run check:host` verifies a candidate host before release).
+const DSH_ENGINES = '>=0.2.1-rc.2'
+
 const version = {
   version: pkg.version,
   publishTimestamp: reuseTimestamp(outputPath, pkg.version) ?? Math.floor(Date.now() / 1000),
   source,
-  engines: { dsh: options.dsh ?? '>=0.2.1-rc.2 <0.3.0-0' },
+  engines: { dsh: options.dsh ?? DSH_ENGINES },
 }
 
 const index = {

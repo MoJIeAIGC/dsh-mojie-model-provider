@@ -33,21 +33,18 @@
 dsh --version
 ```
 
-打印出 `0.2.1-rc.2` 或更高版本就可以继续。
 
 ### 1. 创建APIKEY
 
-<br />
+![image](\assets\screenshots\apikey-menu.png)
 
-进入后是 APIKEY 管理页，点右上角 **新建密钥**：
+![image](\assets\screenshots\apikey-list.png)
 
-<br />
+> 进入后是 APIKEY 管理页，点右上角 **新建密钥**：
 
-<br />
+![image](\assets\screenshots\apikey-create.png)
 
-创建后回到列表，点 Key 后面的复制图标把它复制走：
-
-<br />
+![image](\assets\screenshots\apikey-copy.png)
 
 > \[!WARNING]
 > APIKEY 是你与 MojieAgentFlow 通信的重要凭证，请妥善保管；如怀疑泄露，请及时删除并重新创建，
@@ -56,16 +53,23 @@ dsh --version
 
 #### 方式 A · 插件市场（推荐）
 
-<br />
+在插件市场中输入
 
-<br />
+```sh
+@mojieai/dsh-mojie-model-provider
+```
+
+![image](\assets\screenshots\install-open.png)
+
+
+![image](\assets\screenshots\install-dialog.png)
 
 #### 方式 B · 一行命令
 
 打开终端（PowerShell / Terminal）：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/download/v0.3.0/mojieai-dsh-mojie-model-provider-0.3.0.tgz
+dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/download/v0.3.1/mojieai-dsh-mojie-model-provider-0.3.1.tgz
 ```
 
 #### 装完必须重启一次

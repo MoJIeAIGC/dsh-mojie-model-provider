@@ -1,4 +1,5 @@
-import { attributionHeaders, LlmError, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { LlmError, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { mojieAuthHeaders } from './auth.js'
 import { parseSse } from '../sse.js'
 import { providerError } from '../transport.js'
 import { translate } from '../translate.js'
@@ -92,13 +93,13 @@ export async function* streamResponses(options: ResponsesStreamOptions): AsyncIt
         method: 'POST',
         signal: requestSignal,
         redirect: 'error',
-        headers: {
-          ...attributionHeaders(),
-          'accept': 'text/event-stream',
-          'content-type': 'application/json',
-          'authorization': `Bearer ${options.apiKey}`,
-          ...options.headers,
-        },
+        headers: await mojieAuthHeaders(options.apiKey, {
+          headers: {
+            'accept': 'text/event-stream',
+            'content-type': 'application/json',
+            ...options.headers,
+          },
+        }),
         body: JSON.stringify(body),
       })
     } catch (cause) {

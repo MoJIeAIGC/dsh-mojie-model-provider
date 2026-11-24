@@ -50,13 +50,13 @@
       },
       "versions": [
         {
-          "version": "0.3.0",
-          "publishTimestamp": 1794883397,
+          "version": "0.3.1",
+          "publishTimestamp": 1795493336,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.1-rc.2 <0.3.0-0"
+            "dsh": ">=0.2.1-rc.2"
           }
         }
       ]

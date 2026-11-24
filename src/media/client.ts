@@ -1,5 +1,6 @@
 import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
+import { mojieAuthHeaders } from '../core/auth.js'
 import { normalizeBaseURL } from '../core/endpoint.js'
 import { providerError } from '../transport.js'
 import { advancedParameterPayload, assertAdvancedParameters, type AdvancedImageParameters } from './parameters.js'
@@ -299,11 +300,12 @@ export class MojieMediaClient {
         method,
         ...signal === undefined ? {} : { signal },
         redirect: 'error',
-        headers: {
-          'accept': 'application/json',
-          ...payload === undefined ? {} : { 'content-type': 'application/json' },
-          'authorization': `Bearer ${this.options.apiKey}`,
-        },
+        headers: await mojieAuthHeaders(this.options.apiKey, {
+          headers: {
+            'accept': 'application/json',
+            ...payload === undefined ? {} : { 'content-type': 'application/json' },
+          },
+        }),
         ...payload === undefined ? {} : { body: JSON.stringify(payload) },
       })
     } catch (cause) {

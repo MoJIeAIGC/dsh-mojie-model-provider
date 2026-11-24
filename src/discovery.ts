@@ -1,11 +1,10 @@
 import {
-  assertUsableApiKey,
-  attributionHeaders,
   LlmError,
   type LlmDiscoveredModel,
   type LlmModelDiscoveryRequest,
   type ModelModality,
 } from '@deepseek-ai/dsh-llm'
+import { mojieAuthHeaders } from './core/auth.js'
 import { modelsURL, normalizeBaseURL } from './core/endpoint.js'
 import type { ResolvedConfig } from './config.js'
 import { mergeCatalog } from './catalog.js'
@@ -140,16 +139,11 @@ export async function fetchModelListing(
   signal?: AbortSignal,
 ): Promise<MojieDiscoveredModel[]> {
   const normalized = normalizeBaseURL(baseURL)
-  const usable = assertUsableApiKey(apiKey, 'mojie', 'apiKeyEnv')
   let response: Response
   try {
     response = await fetch(modelsURL(normalized), {
       method: 'GET',
-      headers: {
-        ...attributionHeaders(),
-        'accept': 'application/json',
-        'authorization': `Bearer ${usable}`,
-      },
+      headers: await mojieAuthHeaders(apiKey, { ref: 'apiKeyEnv', headers: { 'accept': 'application/json' } }),
       ...signal === undefined ? {} : { signal },
     })
   } catch (cause) {

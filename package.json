@@ -1,7 +1,7 @@
 {
   "name": "@mojieai/dsh-mojie-model-provider",
   "description": "Standalone DeepSeek Harness (dsh) plugin: Mojie (mojieaigc.com) LLM model provider",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publishConfig": {
     "access": "public"
   },
@@ -47,6 +47,7 @@
     "clean": "node scripts/clean-lib.mjs",
     "sync:catalog": "node scripts/sync-catalog.mjs",
     "check:catalog": "node scripts/sync-catalog.mjs --check",
+    "check:host": "node scripts/check-host-exports.mjs",
     "market:index": "node scripts/build-market-index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
@@ -69,8 +70,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
-    "@deepseek-ai/dsh-llm": "^0.2.1-rc.2",
-    "@deepseek-ai/dsh-tools": "^0.2.1-rc.2"
+    "@deepseek-ai/dsh-llm": ">=0.2.1-rc.2",
+    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-tools": {

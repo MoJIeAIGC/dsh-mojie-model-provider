@@ -5,8 +5,9 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { LlmAdapter } from '@deepseek-ai/dsh-llm'
-import { assertUsableApiKey, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
+import { LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
 import { MojieAdapter } from './adapter.js'
+import { assertUsableApiKey } from './core/credential.js'
 import { registerImageCommand } from './commands/image.js'
 import {
   Config, normalizeConfig, plainOptions, type Config as PluginConfig, type ResolvedConfig,
@@ -31,6 +32,8 @@ export type { Config as PluginConfig, MojieModelConfig } from './config.js'
  * expose the shipped catalog and the raw discovery call.
  */
 export { MojieClient } from './core/client.js'
+export { mojieAuthHeaders } from './core/auth.js'
+export type { MojieAuthOptions } from './core/auth.js'
 export type {
   MojieChatMessage, MojieChatRequest, MojieChatResult, MojieClientOptions, MojieContent,
 } from './core/client.js'
@@ -129,7 +132,7 @@ export async function resolveCredential(ctx: Context, ref: string): Promise<stri
       'MISSING_CREDENTIAL',
     )
   }
-  return assertUsableApiKey(value, 'mojie', ref)
+  return await assertUsableApiKey(value, 'mojie', ref)
 }
 
 /**

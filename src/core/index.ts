@@ -9,6 +9,8 @@
  * @module @mojieai/dsh-mojie-model-provider/core
  */
 
+export { mojieAuthHeaders } from './auth.js'
+export type { MojieAuthOptions } from './auth.js'
 export { MojieClient } from './client.js'
 export type {
   MojieChatMessage,
