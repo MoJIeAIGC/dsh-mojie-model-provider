@@ -36,15 +36,15 @@ dsh --version
 
 ### 1. 创建APIKEY
 
-![image](\assets\screenshots\apikey-menu.png)
+![image](assets/screenshots/apikey-menu.png)
 
-![image](\assets\screenshots\apikey-list.png)
+![image](assets/screenshots/apikey-list.png)
 
 > 进入后是 APIKEY 管理页，点右上角 **新建密钥**：
 
-![image](\assets\screenshots\apikey-create.png)
+![image](assets/screenshots/apikey-create.png)
 
-![image](\assets\screenshots\apikey-copy.png)
+![image](assets/screenshots/apikey-copy.png)
 
 > \[!WARNING]
 > APIKEY 是你与 MojieAgentFlow 通信的重要凭证，请妥善保管；如怀疑泄露，请及时删除并重新创建，
@@ -59,10 +59,10 @@ dsh --version
 @mojieai/dsh-mojie-model-provider
 ```
 
-![image](\assets\screenshots\install-open.png)
+![image](assets/screenshots/install-open.png)
 
 
-![image](\assets\screenshots\install-dialog.png)
+![image](assets/screenshots/install-dialog.png)
 
 #### 方式 B · 一行命令
 
