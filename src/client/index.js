@@ -55,6 +55,8 @@ import {
   TrashIcon,
 } from './native-ui.js'
 import { registerMojieToolViews } from './toolview.js'
+import { createUpdateStore } from './update-check.js'
+import { MojieUpdateHint, MojieUpdateToast } from './update-notice.js'
 import { sortModelOrder } from '../order.ts'
 
 /** Settings namespace: the profile entry id pinned by the bundle patch. */
@@ -807,6 +809,7 @@ function MojieProviderCard(props) {
   const currentImageModel = imageModel.trim()
 
   return h('div', { className: cls.editor }, [
+    h(MojieUpdateHint, { key: 'update', update: props.mojie.update }),
     h('div', { key: 'key', className: cls.field }, [
       h('span', { key: 'label', className: cls.fieldLabel }, 'API 密钥'),
       h('div', { key: 'control', className: cls.key }, [
@@ -1080,9 +1083,22 @@ export function apply(ctx) {
   // card only for `read_image`; without these keyed views a generated picture
   // stays in the Session log and the generic row shows its attachment JSON.
   registerMojieToolViews(ctx)
+  // One reminder store per page: the toast and the Models card read the same
+  // snapshot, so dismissing the toast does not leave a stale second opinion.
+  const update = createUpdateStore()
+  ctx.effect(() => {
+    // Server rendering and unit tests have no page to remind.
+    if (typeof window === 'undefined') return undefined
+    return update.start()
+  }, 'mojie: update check')
+  ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'mojie.update-notice',
+    inject: () => ({ update, ctx }),
+  }, MojieUpdateToast)), 'mojie: update notice')
   ctx.effect(
     () => ctx.configForms.whileServed([NS], () => {
-      const face = { form: ctx.configForms.get(NS), ctx }
+      const face = { form: ctx.configForms.get(NS), ctx, update }
       return ctx.slots.inject('settings.models.provider-card', () => ctx.slots.register({
         name: 'settings.models.provider-card',
         key: NS,
