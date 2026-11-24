@@ -69,7 +69,7 @@ dsh --version
 打开终端（PowerShell / Terminal）：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/download/v0.3.1/mojieai-dsh-mojie-model-provider-0.3.1.tgz
+dsh plugin --profile desktop add https://github.com/MoJIeAIGC/dsh-mojie-model-provider/releases/download/v0.3.2/mojieai-dsh-mojie-model-provider-0.3.2.tgz
 ```
 
 #### 装完必须重启一次
